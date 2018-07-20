@@ -149,7 +149,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 //convert local path to remote blob path
-std::wstring map_to_blob_path(const char *path);
+std::wstring map_to_blob_path(const char *path) throw(std::exception);
 
 // Greedily list all blobs using the input params.
 //std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);

@@ -191,7 +191,7 @@ int set_log_mask(const char * min_log_level_char)
 {
 	if (!min_log_level_char)
 	{
-		setlogmask(LOG_UPTO(LOG_DEBUG));
+		setlogmask(LOG_UPTO(LOG_ALERT));
 		return 0;
 	}
 	std::string min_log_level(min_log_level_char);
@@ -484,31 +484,41 @@ bool is_directory_blob(const azure::storage::cloud_blob & blob)
 	return false;
 }
 
-int azs_getattr_real(wstring &name, struct FUSE_STAT * stbuf) {
-	if (name.back() == L'/') {
-		//name is only directory
-		azure::storage::cloud_blob blob = azure_blob_container->get_blob_reference(name);
-		if (blob.is_valid() && blob.exists() && is_directory_blob(blob)) {
-			stbuf->st_mode = S_IFDIR | default_permission;
-			// If st_nlink = 2, means direcotry is empty.
-			// Directory size will affect behaviour for mv, rmdir, cp etc.
-			stbuf->st_uid = fuse_get_context()->uid;
-			stbuf->st_gid = fuse_get_context()->gid;
-			stbuf->st_nlink = 3;
-			stbuf->st_size = 0;
-			return 0;
-		}
-		else {
-			return ENOENT;
-		}
+
+int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
+{
+	AZS_DEBUGLOGV("azs_getattr called with path = %s\n", path);
+
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+
+	if (name.empty()) {
+		//name is rootdir
+		stbuf->st_mode = S_IFDIR | default_permission;
+		// If st_nlink = 2, means direcotry is empty.
+		// Directory size will affect behaviour for mv, rmdir, cp etc.
+		stbuf->st_uid = fuse_get_context()->uid;
+		stbuf->st_gid = fuse_get_context()->gid;
+		stbuf->st_nlink = 3;
+		stbuf->st_size = 0;
+		return 0;
 	}
 	else {
 		//name is regular file or directory
 		azure::storage::cloud_blob blob = azure_blob_container->get_blob_reference(name);
-		if (!blob.is_valid())
-			return ENOENT;
-		if (blob.exists()) {
-			stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+		if (!blob.is_valid() || !blob.exists()) {
+			errno = ENOENT;
+			return -1;
+		}
+		if (!is_directory_blob(blob)) {
+			stbuf->st_mode = S_IFREG | default_permission; // Regular file
 			stbuf->st_uid = fuse_get_context()->uid;
 			stbuf->st_gid = fuse_get_context()->gid;
 			stbuf->st_mtim = {};
@@ -519,42 +529,44 @@ int azs_getattr_real(wstring &name, struct FUSE_STAT * stbuf) {
 			return 0;
 		}
 		else {
-			//test if it is a directory
-			name.push_back(L'/');
-			return azs_getattr_real(name, stbuf);
+			stbuf->st_mode = S_IFDIR | default_permission; // dir
+			stbuf->st_uid = fuse_get_context()->uid;
+			stbuf->st_gid = fuse_get_context()->gid;
+			stbuf->st_nlink = 3;
+			stbuf->st_size = 0;
+			return 0;
 		}
 	}
 }
 
-int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
-{
-	AZS_DEBUGLOGV("azs_getattr called with path = %s\n", path);
-
-	wstring name = map_to_blob_path(path);
-	return azs_getattr_real(name, stbuf);
-}
-
-wstring map_to_blob_path(const char *path) {
-	wstring rpath(L"root");
-	if (path[0] != '/')rpath.push_back(L'/');
-	rpath.append(string2wstring(path));
-	return rpath;
+wstring map_to_blob_path(const char *path) throw (std::exception){
+	if (!path[0]) {
+		throw std::exception("bad path");
+	}
+	if (path[0] == '/') {
+		return string2wstring(path + 1);
+	}
+	else {
+		return string2wstring(path);
+	}
 }
 
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *)
 {
 	AZS_DEBUGLOGV("azs_readdir called with path = %s\n", path);
-
-	wstring dirname = map_to_blob_path(path);
-	if (dirname.back() != L'/')dirname.push_back(L'/');
-	
-	auto dirref=azure_blob_container->get_directory_reference(dirname);
-	auto blobref = azure_blob_container->get_blob_reference(dirname);
-	if (!dirref.is_valid()||!blobref.exists()||!is_directory_blob(blobref)) {
+	wstring dirname;
+	try {
+		dirname = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
 		errno = ENOENT;
 		return -1;
 	}
-	wstring prefix = dirref.prefix();
+	
+
+	azure::storage::list_blob_item_iterator end_iter;
+	int is_buf_full = 0;
 	struct FUSE_STAT statbuf = {};
 	statbuf.st_mode = S_IFDIR | default_permission;
 	statbuf.st_uid = fuse_get_context()->uid;
@@ -564,15 +576,29 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T,
 	filler(buf, ".", &statbuf, 0);
 	filler(buf, "..", &statbuf, 0);
 
-	int is_buf_full = 0;
-
-	azure::storage::list_blob_item_iterator end_iter;
-	for (auto it = dirref.list_blobs(); it != end_iter; ++it) {
-		if (!it->is_blob()) {
-			auto dirref = it->as_directory();
-			is_buf_full=filler(buf, wstring2string(dirref.prefix().substr(prefix.length())).c_str(), &statbuf, 0);
+	//if it is the root dir
+	if (dirname.empty()) {
+		for (auto it = azure_blob_container->list_blobs(); it != end_iter; ++it) {
+			if (it->is_blob()) {
+				auto blobref = it->as_blob();
+				is_buf_full = filler(buf, wstring2string(blobref.name()).c_str(), NULL, 0);
+			}
+			if (is_buf_full)return is_buf_full;
 		}
-		else {
+		return 0;
+	}
+
+	//if it is common dir
+	auto dirref=azure_blob_container->get_directory_reference(dirname);
+	auto blobref = azure_blob_container->get_blob_reference(dirname);
+	if (!dirref.is_valid()||!blobref.exists()||!is_directory_blob(blobref)) {
+		errno = ENOENT;
+		return -1;
+	}
+	wstring prefix = dirref.prefix();
+	
+	for (auto it = dirref.list_blobs(); it != end_iter; ++it) {
+		if(it->is_blob()) {
 			auto blobref = it->as_blob();
 			filler(buf, wstring2string(blobref.name().substr(prefix.length())).c_str(), NULL, 0);
 		}
@@ -587,7 +613,7 @@ static int azs_open_stub(const char *path, struct fuse_file_info *fi)
 	return 0;
 }
 
-static int azs_read_stub(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
+static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
 {
 	syslog(LOG_EMERG, "path %s, offset %d, len %d", path, offset, size);
 	auto blob = azure_blob_container->get_blob_reference(string2wstring(path));
@@ -623,11 +649,15 @@ static int azs_read_stub(const char * path, char * buf, size_t size, FUSE_OFF_T 
 	return contain.size();
 }
 
+static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info *fi) {
+	return 0;
+}
+
 void set_up_callbacks() {
 	azs_fuse_operations.init = azs_init;
 	azs_fuse_operations.statfs = azs_statfs;
 	azs_fuse_operations.getattr = azs_getattr;
 	azs_fuse_operations.readdir = azs_readdir;
-	azs_fuse_operations.read = azs_read_stub;
+	azs_fuse_operations.read = azs_read;
 	azs_fuse_operations.open = azs_open_stub;
 }
