@@ -368,21 +368,14 @@ int validate_storage_connection()
 		azure::storage::cloud_blob_client blob_client = storage_account.create_cloud_blob_client();
 
 		// Retrieve a reference to a previously created container.
-		azure_blob_container = std::make_shared<azure::storage::cloud_blob_container>(blob_client.get_container_reference(string2wstring(str_options.containerName)));
-		auto dirref = azure_blob_container->get_directory_reference(L"/");
-		azure::storage::list_blob_item_iterator end_of_results;
-		auto it = dirref.list_blobs(true, azure::storage::blob_listing_details::none, 0, azure::storage::blob_request_options(), azure::storage::operation_context());
-		for (; it != end_of_results; ++it)
-		{
-			if (it->is_blob())
-			{
-				std::wcout << U("Blob: ") << it->as_blob().name() << std::endl;
-			}
-			else
-			{
-				std::wcout << U("Directory: ") << it->as_directory().uri().primary_uri().to_string() << std::endl;
-			}
-		}
+		auto azure_blob_container = blob_client.get_container_reference(string2wstring(str_options.containerName));
+		auto blob=azure_blob_container.get_block_blob_reference(L"root/my/haha.txt");
+		std::vector<std::uint8_t> vec;
+		auto ins = "hello";
+		vec.assign(ins, ins + 5);;
+		concurrency::streams::container_buffer<std::vector<uint8_t>> buffer(vec);
+		concurrency::streams::istream istream(buffer);
+		int i = 3;
 	}
 	return 0;
 }
@@ -615,8 +608,18 @@ static int azs_open_stub(const char *path, struct fuse_file_info *fi)
 
 static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
 {
-	syslog(LOG_EMERG, "path %s, offset %d, len %d", path, offset, size);
-	auto blob = azure_blob_container->get_blob_reference(string2wstring(path));
+	AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+
+	auto blob = azure_blob_container->get_blob_reference(name);
 	concurrency::streams::container_buffer<std::vector<uint8_t>> buffer;
 	concurrency::streams::ostream output_stream(buffer);
 	if (!blob.exists()) {
@@ -632,7 +635,7 @@ static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offse
 		blob.download_range_to_stream(output_stream, offset, size);
 	}
 	catch (std::exception &e) {
-		syslog(LOG_EMERG, e.what());
+		//syslog(LOG_EMERG, e.what());
 		/*size_t fake_taken = blob.properties().size();
 		fake_taken = (fake_taken / 512 + ((fake_taken % 512) ? 1 : 0)) * 512;
 		memset(buf, 0, size);
@@ -650,6 +653,166 @@ static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offse
 }
 
 static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info *fi) {
+	syslog(LOG_EMERG,"write called with path = %s, size %d, offset %d\n", path,(int)size,(int)offset);
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+
+	auto blob = azure_blob_container->get_block_blob_reference(name);
+	concurrency::streams::container_buffer<std::vector<uint8_t>> buffer;
+	concurrency::streams::ostream output_stream(buffer);
+	if (!blob.exists()) {
+		errno = ENOENT;
+		return -1;
+	}
+
+	if (is_directory_blob(blob)) {
+		errno = EISDIR;
+		return -1;
+	}
+
+	try {
+		blob.download_to_stream(output_stream);
+	}
+	catch (std::exception & e) {
+		//syslog(LOG_ALERT, e.what());
+		errno = EIO;
+		return -1;
+	}
+	auto& contain = buffer.collection();
+	if (offset + size > contain.size()) {
+		contain.resize(offset + size);
+	}
+	
+	for (int i = 0; i < size; i++) {
+		contain[offset + i] = buf[i];
+	}
+	concurrency::streams::container_buffer<std::vector<uint8_t>> ibuffer(contain);
+	concurrency::streams::istream istream(ibuffer);
+	blob.upload_from_stream(istream);
+	return size;
+}
+
+int azs_truncate(const char * path, FUSE_OFF_T offset) {
+	syslog(LOG_EMERG, "truncate called with path = %s, offset %d\n", path, (int)offset);
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+
+	auto blob = azure_blob_container->get_block_blob_reference(name);
+	concurrency::streams::container_buffer<std::vector<uint8_t>> buffer;
+	concurrency::streams::ostream output_stream(buffer);
+	if (!blob.exists()) {
+		errno = ENOENT;
+		return -1;
+	}
+
+	if (is_directory_blob(blob)) {
+		errno = EISDIR;
+		return -1;
+	}
+	try {
+		blob.download_to_stream(output_stream);
+	}
+	catch (std::exception & e) {
+		//syslog(LOG_ALERT, e.what());
+		errno = EIO;
+		return -1;
+	}
+	auto& contain = buffer.collection();
+	contain.resize(offset);
+	concurrency::streams::container_buffer<std::vector<uint8_t>> ibuffer(contain);
+	concurrency::streams::istream istream(ibuffer);
+	blob.upload_from_stream(istream);
+	return 0;
+}
+
+
+int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
+	syslog(LOG_EMERG, "create %s", path);
+	return 0;
+}
+
+int azs_release_stub(const char *path, struct fuse_file_info * fi) {
+	return 0;
+}
+
+int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/) {
+	return 0;
+}
+
+int azs_mkdir_stub(const char *path, mode_t) {
+	return 0;
+}
+
+int azs_unlink_stub(const char *path) {
+	return 0;
+}
+
+int azs_rmdir_stub(const char *path) {
+	return 0;
+}
+
+int azs_chown_stub(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/) {
+	return 0;
+}
+
+int azs_chmod_stub(const char * /*path*/, mode_t /*mode*/)
+{
+	//TODO: Implement
+	//    return -ENOSYS;
+	return 0;
+}
+
+int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
+{
+	//TODO: Implement
+	//    return -ENOSYS;
+	return 0;
+}
+
+void azs_destroy(void * /*private_data*/)
+{
+	AZS_DEBUGLOG("azs_destroy called.\n");
+
+}
+
+
+
+int azs_rename(const char *src, const char *dst) {
+	return 0;
+}
+
+int azs_setxattr(const char * /*path*/, const char * /*name*/, const char * /*value*/, size_t /*size*/, int /*flags*/)
+{
+	return -ENOSYS;
+}
+int azs_getxattr(const char * /*path*/, const char * /*name*/, char * /*value*/, size_t /*size*/)
+{
+	return -ENOSYS;
+}
+int azs_listxattr(const char * /*path*/, char * /*list*/, size_t /*size*/)
+{
+	return -ENOSYS;
+}
+int azs_removexattr(const char * /*path*/, const char * /*name*/)
+{
+	return -ENOSYS;
+}
+
+int azs_flush(const char *path, struct fuse_file_info *fi) {
 	return 0;
 }
 
@@ -659,5 +822,23 @@ void set_up_callbacks() {
 	azs_fuse_operations.getattr = azs_getattr;
 	azs_fuse_operations.readdir = azs_readdir;
 	azs_fuse_operations.read = azs_read;
+	azs_fuse_operations.write = azs_write;
 	azs_fuse_operations.open = azs_open_stub;
+	azs_fuse_operations.create= azs_create_stub;
+	azs_fuse_operations.release = azs_release_stub;
+	azs_fuse_operations.fsync = azs_fsync_stub;
+	azs_fuse_operations.mkdir = azs_mkdir_stub;
+	azs_fuse_operations.unlink = azs_unlink_stub;
+	azs_fuse_operations.rmdir = azs_rmdir_stub;
+	azs_fuse_operations.chown = azs_chown_stub;
+	azs_fuse_operations.chmod = azs_chmod_stub;
+	azs_fuse_operations.utimens = azs_utimens;
+	azs_fuse_operations.destroy = azs_destroy;
+	azs_fuse_operations.truncate = azs_truncate;
+	azs_fuse_operations.rename = azs_rename;
+	azs_fuse_operations.setxattr = azs_setxattr;
+	azs_fuse_operations.getxattr = azs_getxattr;
+	azs_fuse_operations.listxattr = azs_listxattr;
+	azs_fuse_operations.removexattr = azs_removexattr;
+	azs_fuse_operations.flush = azs_flush;
 }
