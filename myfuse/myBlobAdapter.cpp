@@ -372,10 +372,11 @@ int validate_storage_connection()
 		auto blob=azure_blob_container.get_block_blob_reference(L"root/my/haha.txt");
 		std::vector<std::uint8_t> vec;
 		auto ins = "hello";
-		vec.assign(ins, ins + 5);;
+		vec.assign(ins, ins + 5);
 		concurrency::streams::container_buffer<std::vector<uint8_t>> buffer(vec);
 		concurrency::streams::istream istream(buffer);
-		int i = 3;
+		blob.upload_from_stream(istream);
+		istream.close();
 	}
 	return 0;
 }
@@ -409,7 +410,7 @@ void *azs_init(struct fuse_conn_info * conn)
 {
 	// Retrieve storage account from connection string.
 
-	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=https"));
+	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 	storage_connection_string += U(";AccountName=");
 	storage_connection_string += string2wstring(str_options.accountName);
 	storage_connection_string += U(";AccountKey=");
@@ -742,6 +743,33 @@ int azs_truncate(const char * path, FUSE_OFF_T offset) {
 
 int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	syslog(LOG_EMERG, "create %s", path);
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+	auto blob = azure_blob_container->get_blob_reference(name);
+	if (blob.exists()) {
+		errno = EEXIST;
+		return -1;
+	}
+	wstring parent = blob.get_parent_reference().prefix();
+	parent.erase(parent.length() - 1, 1);
+	
+
+	if (parent.length()) {
+		auto parent_blob = azure_blob_container->get_blob_reference(parent);
+		if (!parent_blob.exists() || !is_directory_blob(parent_blob)) {
+			errno = ENOENT;
+			return -1;
+		}
+	}
+	auto blockblob = azure_blob_container->get_block_blob_reference(name);
+	blockblob.open_write().close();
 	return 0;
 }
 
@@ -754,6 +782,37 @@ int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_i
 }
 
 int azs_mkdir_stub(const char *path, mode_t) {
+	syslog(LOG_EMERG, "mkdir %s", path);
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+	auto blob = azure_blob_container->get_blob_reference(name);
+	if (blob.exists()) {
+		errno = EEXIST;
+		return -1;
+	}
+	wstring parent = blob.get_parent_reference().prefix();
+	if(parent.length() && parent.back()==L'/')parent.pop_back();
+
+
+	if (parent.length()) {
+		auto parent_blob = azure_blob_container->get_blob_reference(parent);
+		if (!parent_blob.exists() || !is_directory_blob(parent_blob)) {
+			errno = ENOENT;
+			return -1;
+		}
+	}
+	auto blockblob = azure_blob_container->get_block_blob_reference(name);
+	blockblob.upload_text(L"");
+	auto& metadata = blockblob.metadata();
+	metadata[L"is_dir"] = L"true";
+	blockblob.upload_metadata();
 	return 0;
 }
 

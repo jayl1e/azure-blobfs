@@ -18,8 +18,19 @@ extern void configure_fuse(struct fuse_args *args);
 extern void set_up_callbacks();
 extern struct fuse_operations azs_fuse_operations;
 
+using namespace concurrency;
 
 int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
+	
+	streams::container_buffer <std::deque<uint8_t>> contain;
+
+	task<void> tasks = streams::fstream::open_istream(U("hello.cpp")).then([&contain](task<streams::istream> is) {
+		return is.get().read_to_end(contain);
+	}).then([](size_t t) {});
+	tasks.wait();
+	auto & vec=contain.collection();
+
+
 	char ** cargv = new char*[argc];
 
 	for (int i = 0; i < argc; i++) {
