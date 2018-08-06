@@ -485,7 +485,7 @@ bool is_directory_blob(const azure::storage::cloud_blob & blob)
 
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	syslog(LOG_DEBUG, "azs_getattr called with path = %s\n", path);
+	syslog(LOG_EMERG, "azs_getattr called with path = %s", path);
 
 	wstring name;
 	try {
@@ -532,6 +532,7 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 			stbuf->st_blksize = 1;
 			stbuf->st_blocks = blob.properties().size();
 			stbuf->st_size = blob.properties().size();
+			syslog(LOG_EMERG, "stat sucess: regular file\n");
 			return 0;
 		}
 		else {
@@ -540,6 +541,7 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 			stbuf->st_gid = fuse_get_context()->gid;
 			stbuf->st_nlink = 3;
 			stbuf->st_size = 0;
+			syslog(LOG_EMERG, "stat sucess: directory file\n");
 			return 0;
 		}
 	}
@@ -549,12 +551,20 @@ wstring map_to_blob_path(const char *path) throw (std::exception){
 	if (!path[0]) {
 		throw std::exception("bad path");
 	}
+	wstring tmp;
 	if (path[0] == '/') {
-		return string2wstring(path + 1);
+		tmp= string2wstring(path + 1);
 	}
 	else {
-		return string2wstring(path);
+		wstring tmp= string2wstring(path);
 	}
+	
+	//to lower case to camatible with docker windows
+	for (wchar_t& t : tmp) {
+		if (t >= L'A'&&t <= L'Z')t = t + L'a' - L'A';
+	}
+	return tmp;
+
 }
 
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *)
@@ -630,7 +640,7 @@ static int azs_open_stub(const char *path, struct fuse_file_info *fi)
 	auto iter = file_map.find(name);
 	if (iter != file_map.end()) {
 		fi->fh = reinterpret_cast<int64_t>(iter->second);
-		syslog(LOG_EMERG, "open cached file proxy : %lld", fi->fh);
+		syslog(LOG_EMERG, "open cached file proxy:%s, fh:%lld", path, fi->fh);
 		return 0;
 	}
 	else {
@@ -744,8 +754,10 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 	return size;
 }
 
+
+
 int azs_truncate(const char * path, FUSE_OFF_T offset) {
-	syslog(LOG_EMERG, "truncate called with path = %s, offset %d\n", path, (int)offset);
+	syslog(LOG_EMERG, "---truncate called with path = %s, offset %d", path, (int)offset);
 	wstring name;
 	try {
 		name = map_to_blob_path(path);
@@ -784,6 +796,10 @@ int azs_truncate(const char * path, FUSE_OFF_T offset) {
 	return 0;
 }
 
+int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *fi) {
+	syslog(LOG_EMERG, "---ftruncate: fh %lld , offset %lld", fi->fh,offset);
+	return azs_truncate(path, offset);
+}
 
 int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	syslog(LOG_EMERG, "create %s", path);
@@ -862,6 +878,28 @@ int azs_mkdir_stub(const char *path, mode_t) {
 }
 
 int azs_unlink_stub(const char *path) {
+	syslog(LOG_EMERG, "rm %s", path);
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+	auto blob = azure_blob_container->get_blob_reference(name);
+	try {
+		blob.delete_blob();
+	}
+	catch (azure::storage::storage_exception& e) {
+		syslog(LOG_EMERG, "azure exception: %s", e.what());
+		errno = ENOENT;
+		return -1;
+	}
+	catch (exception& e) {
+		syslog(LOG_EMERG, "exception: %s", e.what());
+	}
 	return 0;
 }
 
@@ -938,6 +976,7 @@ void set_up_callbacks() {
 	azs_fuse_operations.utimens = azs_utimens;
 	azs_fuse_operations.destroy = azs_destroy;
 	azs_fuse_operations.truncate = azs_truncate;
+	azs_fuse_operations.ftruncate = azs_ftruncate;
 	azs_fuse_operations.rename = azs_rename;
 	azs_fuse_operations.setxattr = azs_setxattr;
 	azs_fuse_operations.getxattr = azs_getxattr;
