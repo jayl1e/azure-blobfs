@@ -47,6 +47,7 @@ const struct fuse_opt option_spec[] =
 };
 
 std::shared_ptr<azure::storage::cloud_blob_container> azure_blob_container;
+static unordered_map<wstring, BlobProxy*> file_map;
 
 const std::string log_ident = "blobfuse";
 
@@ -396,14 +397,16 @@ void configure_fuse(struct fuse_args *args)
 	{
 		file_cache_timeout_in_seconds = 120;
 	}
-
+	fuse_opt_add_arg(args, "-ovolname=DDD");
+	fuse_opt_add_arg(args, "-odefault_permissions");
 	// FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
 	// This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
 	fuse_opt_add_arg(args, "-ohard_remove");
 	fuse_opt_add_arg(args, "-obig_writes");
-	fuse_opt_add_arg(args, "-ofsname=blobfuse");
+	fuse_opt_add_arg(args, "-ofsname=azureblobfuse");
 	fuse_opt_add_arg(args, "-okernel_cache");
 }
+
 
 
 void *azs_init(struct fuse_conn_info * conn)
@@ -440,6 +443,7 @@ void *azs_init(struct fuse_conn_info * conn)
 
 	return NULL;
 }
+
 
 
 int azs_statfs(const char *path, struct statvfs * stbuf)
@@ -481,7 +485,7 @@ bool is_directory_blob(const azure::storage::cloud_blob & blob)
 
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	AZS_DEBUGLOGV("azs_getattr called with path = %s\n", path);
+	syslog(LOG_DEBUG, "azs_getattr called with path = %s\n", path);
 
 	wstring name;
 	try {
@@ -506,6 +510,14 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 	}
 	else {
 		//name is regular file or directory
+
+		auto iter = file_map.find(name);
+		if (iter != file_map.end()) {
+			iter->second->getattr(stbuf);
+			syslog(LOG_EMERG, "getattr cached file proxy : %lld", iter->second);
+			return 0;
+		}
+
 		azure::storage::cloud_blob blob = azure_blob_container->get_blob_reference(name);
 		if (!blob.is_valid() || !blob.exists()) {
 			errno = ENOENT;
@@ -558,7 +570,6 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T,
 		return -1;
 	}
 	
-
 	azure::storage::list_blob_item_iterator end_iter;
 	int is_buf_full = 0;
 	struct FUSE_STAT statbuf = {};
@@ -601,15 +612,48 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T,
 	return 0;
 }
 
+
 static int azs_open_stub(const char *path, struct fuse_file_info *fi)
 {
+	wstring name;
+	try {
+		name = map_to_blob_path(path);
+	}
+	catch (const std::exception& e) {
+		syslog(LOG_ALERT, e.what());
+		errno = ENOENT;
+		return -1;
+	}
+
 	fi->direct_io = 1;
+
+	auto iter = file_map.find(name);
+	if (iter != file_map.end()) {
+		fi->fh = reinterpret_cast<int64_t>(iter->second);
+		syslog(LOG_EMERG, "open cached file proxy : %lld", fi->fh);
+		return 0;
+	}
+	else {
+		fi->fh = reinterpret_cast<int64_t>(BlobProxy::open(name));
+		if (fi->fh) {
+			file_map[name] = reinterpret_cast<BlobProxy*>(fi->fh);
+			syslog(LOG_EMERG, "flush cache file proxy : %lld", fi->fh);
+		}
+	}
+	syslog(LOG_EMERG, "open path %s, handle %llu, flags %x", path, fi->fh,fi->flags);
+	
 	return 0;
 }
 
 static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
 {
-	AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+	syslog(LOG_DEBUG,"azs_read called with path = %s\n, size=%llu, offset=%llu", path,size,offset);
+
+	if (fi->fh) {
+		auto proxy = reinterpret_cast<BlobProxy *>(fi->fh);
+		return proxy->read(buf, size, offset, fi);
+	}
+
 	wstring name;
 	try {
 		name = map_to_blob_path(path);
@@ -774,6 +818,7 @@ int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
 }
 
 int azs_release_stub(const char *path, struct fuse_file_info * fi) {
+	syslog(LOG_EMERG, "release, path %s, handle %llu, flags %x", path, fi->fh, fi->flags);
 	return 0;
 }
 
@@ -844,8 +889,7 @@ int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
 
 void azs_destroy(void * /*private_data*/)
 {
-	AZS_DEBUGLOG("azs_destroy called.\n");
-
+	syslog(LOG_EMERG,"azs_destroy called.\n");
 }
 
 

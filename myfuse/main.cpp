@@ -2,6 +2,7 @@
 #include <was/blob.h>
 #include <cpprest/filestream.h>  
 #include <cpprest/containerstream.h>
+#include <cpprest/producerconsumerstream.h>
 #include <codecvt>
 
 #include "blobfuse.h"
@@ -21,15 +22,8 @@ extern struct fuse_operations azs_fuse_operations;
 using namespace concurrency;
 
 int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
-	
-	streams::container_buffer <std::deque<uint8_t>> contain;
 
-	task<void> tasks = streams::fstream::open_istream(U("hello.cpp")).then([&contain](task<streams::istream> is) {
-		return is.get().read_to_end(contain);
-	}).then([](size_t t) {});
-	tasks.wait();
-	auto & vec=contain.collection();
-
+	vector<int> a = { 1,2,3 };
 
 	char ** cargv = new char*[argc];
 

@@ -33,6 +33,8 @@
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
+#include "BlobProxy.h"
+
 /* Define errors and return codes */
 #define D_NOTEXIST -1
 #define D_EMPTY 0
@@ -41,7 +43,7 @@
 #define AZS_DEBUGLOGV(fmt,...) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__, __VA_ARGS__); } while(0)
 #define AZS_DEBUGLOG(fmt) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__); } while(0)
 
-
+extern std::shared_ptr<azure::storage::cloud_blob_container> azure_blob_container;
 
 // We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
 // The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
