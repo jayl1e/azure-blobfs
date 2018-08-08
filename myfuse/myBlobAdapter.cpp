@@ -192,7 +192,7 @@ int set_log_mask(const char * min_log_level_char)
 {
 	if (!min_log_level_char)
 	{
-		setlogmask(LOG_UPTO(LOG_ALERT));
+		setlogmask(LOG_UPTO(LOG_INFO));
 		return 0;
 	}
 	std::string min_log_level(min_log_level_char);
@@ -485,7 +485,7 @@ bool is_directory_blob(const azure::storage::cloud_blob & blob)
 
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	syslog(LOG_EMERG, "azs_getattr called with path = %s", path);
+	syslog(LOG_NOTICE, "azs_getattr called with path = %s", path);
 
 	wstring name;
 	try {
@@ -514,7 +514,7 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 		auto iter = file_map.find(name);
 		if (iter != file_map.end()) {
 			iter->second->getattr(stbuf);
-			syslog(LOG_EMERG, "getattr cached file proxy : %lld", iter->second);
+			syslog(LOG_NOTICE, "getattr cached file proxy : %lld", iter->second);
 			return 0;
 		}
 
@@ -524,15 +524,8 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 			return -1;
 		}
 		if (!is_directory_blob(blob)) {
-			stbuf->st_mode = S_IFREG | default_permission; // Regular file
-			stbuf->st_uid = fuse_get_context()->uid;
-			stbuf->st_gid = fuse_get_context()->gid;
-			stbuf->st_mtim = {};
-			stbuf->st_nlink = 1;
-			stbuf->st_blksize = 1;
-			stbuf->st_blocks = blob.properties().size();
-			stbuf->st_size = blob.properties().size();
-			syslog(LOG_EMERG, "stat sucess: regular file\n");
+			file_map[name]= BlobProxy::access(name);
+			file_map[name]->getattr(stbuf);
 			return 0;
 		}
 		else {
@@ -541,7 +534,7 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 			stbuf->st_gid = fuse_get_context()->gid;
 			stbuf->st_nlink = 3;
 			stbuf->st_size = 0;
-			syslog(LOG_EMERG, "stat sucess: directory file\n");
+			syslog(LOG_NOTICE, "stat sucess: directory file\n");
 			return 0;
 		}
 	}
@@ -640,17 +633,17 @@ static int azs_open_stub(const char *path, struct fuse_file_info *fi)
 	auto iter = file_map.find(name);
 	if (iter != file_map.end()) {
 		fi->fh = reinterpret_cast<int64_t>(iter->second);
-		syslog(LOG_EMERG, "open cached file proxy:%s, fh:%lld", path, fi->fh);
+		syslog(LOG_NOTICE, "open cached file proxy:%s, fh:%lld", path, fi->fh);
 		return 0;
 	}
 	else {
-		fi->fh = reinterpret_cast<int64_t>(BlobProxy::open(name));
+		fi->fh = reinterpret_cast<int64_t>(BlobProxy::access(name));
 		if (fi->fh) {
 			file_map[name] = reinterpret_cast<BlobProxy*>(fi->fh);
-			syslog(LOG_EMERG, "flush cache file proxy : %lld", fi->fh);
+			syslog(LOG_NOTICE, "flush cache file proxy : %lld", fi->fh);
 		}
 	}
-	syslog(LOG_EMERG, "open path %s, handle %llu, flags %x", path, fi->fh,fi->flags);
+	syslog(LOG_NOTICE, "open path %s, handle %llu, flags %x", path, fi->fh,fi->flags);
 	
 	return 0;
 }
@@ -834,7 +827,7 @@ int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
 }
 
 int azs_release_stub(const char *path, struct fuse_file_info * fi) {
-	syslog(LOG_EMERG, "release, path %s, handle %llu, flags %x", path, fi->fh, fi->flags);
+	syslog(LOG_NOTICE, "release, path %s, handle %llu, flags %x", path, fi->fh, fi->flags);
 	return 0;
 }
 
@@ -843,7 +836,7 @@ int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_i
 }
 
 int azs_mkdir_stub(const char *path, mode_t) {
-	syslog(LOG_EMERG, "mkdir %s", path);
+	syslog(LOG_NOTICE, "mkdir %s", path);
 	wstring name;
 	try {
 		name = map_to_blob_path(path);
@@ -878,7 +871,7 @@ int azs_mkdir_stub(const char *path, mode_t) {
 }
 
 int azs_unlink_stub(const char *path) {
-	syslog(LOG_EMERG, "rm %s", path);
+	syslog(LOG_NOTICE, "rm %s", path);
 	wstring name;
 	try {
 		name = map_to_blob_path(path);
@@ -927,7 +920,7 @@ int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
 
 void azs_destroy(void * /*private_data*/)
 {
-	syslog(LOG_EMERG,"azs_destroy called.\n");
+	syslog(LOG_NOTICE,"azs_destroy called.\n");
 }
 
 

@@ -2,10 +2,8 @@
 
 #include <algorithm>
 
-BlobProxy::BlobProxy(const utility::string_t& name,unique_ptr<storage::cloud_block_blob>&& blob)
+BlobProxy::BlobProxy(const utility::string_t& _name,bool _managed, unique_ptr<storage::cloud_block_blob>&& _pblob):name(_name),managed(_managed),pblob(std::move(_pblob))
 {
-	this->name = name;
-	this->pblob = std::move(blob);
 	const auto meta = pblob->metadata();
 	this->totalsize = pblob->properties().size();
 
@@ -14,7 +12,13 @@ BlobProxy::BlobProxy(const utility::string_t& name,unique_ptr<storage::cloud_blo
 		long long blksize = std::stoll(iter->second);
 		this->blocksize = blksize;
 	}
-	syslog(LOG_EMERG, "totalsize:%lld, blocksize:%lld", this->totalsize, this->blocksize);
+	else if(! this->managed){
+		this->blocksize = this->totalsize;
+	}
+	else {
+		assert(false);
+	}
+	syslog(LOG_NOTICE, "totalsize:%lld, blocksize:%lld", this->totalsize, this->blocksize);
 }
 
 
@@ -28,12 +32,12 @@ size_t BlobProxy::read(char * buf, size_t size, FUSE_OFF_T offset, fuse_file_inf
 	for (int i = 0; i < to_read; ++i,++iter) {
 		buf[i] = *iter;
 	}
-	syslog(LOG_EMERG, "proxy read: offset %lld, size %llu,totallengh %lld, to_read %lld", offset, size, this->totalsize,to_read);
+	syslog(LOG_NOTICE, "proxy read: offset %lld, size %llu,totallengh %lld, to_read %lld", offset, size, this->totalsize,to_read);
 	return to_read;
 }
 
 
-vector<uint8_t>& BlobProxy::get_block(int block_id) {
+vector<uint8_t>& BlobProxy::get_block(int block_id, bool writable) {
 	auto iter = this->blocks.find(block_id);
 	if (iter != blocks.end()) {
 		return iter->second;
@@ -43,12 +47,14 @@ vector<uint8_t>& BlobProxy::get_block(int block_id) {
 		streams::ostream output_stream(buffer);
 		
 		pblob->download_range_to_stream(output_stream, block_id*this->blocksize, blocksize);
-		syslog(LOG_EMERG, "downloading blocks from %lld, size %lld", block_id*this->blocksize, blocksize);
+		syslog(LOG_NOTICE, "downloading blocks from %lld, size %lld", block_id*this->blocksize, blocksize);
 
 		output_stream.close();
-		blocks[block_id]= std::move(buffer.collection());
+		blocks[block_id] = std::move(buffer.collection());
+		blocks[block_id].resize(this->blocksize);
 		return blocks[block_id];
 	}
+	
 }
 
 BlobProxy::ConstIterator BlobProxy::get_c_iter(size_t pos)
@@ -64,15 +70,19 @@ BlobProxy::~BlobProxy()
 {
 }
 
-BlobProxy* BlobProxy::open(const utility::string_t& name)
+BlobProxy* BlobProxy::access(const utility::string_t& name)
 {
 	auto pblob = make_unique<storage::cloud_block_blob>(azure_blob_container->get_block_blob_reference(name));
 	if (!pblob->exists())return nullptr;
 	const auto& meta = pblob->metadata();
 	auto iter = meta.find(U("l_managed"));
-	if (iter == meta.end())return nullptr;
-	syslog(LOG_EMERG, "proxy open success");
-	return new BlobProxy(name,std::move(pblob));
+	syslog(LOG_NOTICE, "file proxy construct success");
+	if (iter != meta.end() && iter->second==L"true") {
+		return new BlobProxy(name, true, std::move(pblob));
+	}
+	else {
+		return new BlobProxy(name, false, std::move(pblob));
+	}
 }
 
 int BlobProxy::getattr(FUSE_STAT * stbuf)
@@ -89,30 +99,30 @@ int BlobProxy::getattr(FUSE_STAT * stbuf)
 }
 
 
-BlobProxy::RawIterator::RawIterator(BlobProxy& proxy, size_t position):m_base(proxy),m_position(position){
+BlobProxy::RawIterator::RawIterator(BlobProxy& proxy, size_t position, bool writable):m_base(proxy),m_position(position),is_writable(writable){
 	if (position >= m_base.totalsize) {
 		m_pblock = nullptr;
 		return;
 	}
-	m_pblock = &m_base.get_block(m_position / (m_base.blocksize));
+	m_pblock = &m_base.get_block(m_position / (m_base.blocksize),writable);
 	m_next_block_pos = (m_position / (m_base.blocksize) + 1)*(m_base.blocksize);
 	m_this_block_pos = m_next_block_pos-m_base.blocksize;
 }
 
-bool BlobProxy::RawIterator::operator==(const BlobProxy::RawIterator& other) {
+inline bool BlobProxy::RawIterator::operator==(const BlobProxy::RawIterator& other) {
 	return &(this->m_base) == &(other.m_base) && this->m_position == other.m_position;
 }
 
-BlobProxy::Iterator::char_t& BlobProxy::Iterator::operator*() {
+inline BlobProxy::Iterator::char_t& BlobProxy::Iterator::operator*() {
 	return m_pblock->at(m_position-m_this_block_pos);
 }
 
-BlobProxy::Iterator::char_t BlobProxy::ConstIterator::operator*()
+inline BlobProxy::Iterator::char_t BlobProxy::ConstIterator::operator*()
 {
 	return m_pblock->at(m_position - m_this_block_pos);
 }
 
-BlobProxy::RawIterator& BlobProxy::RawIterator::operator++() {
+inline BlobProxy::RawIterator& BlobProxy::RawIterator::operator++() {
 	m_position++;
 	if (m_position < m_next_block_pos) {
 		return *this;
@@ -122,7 +132,7 @@ BlobProxy::RawIterator& BlobProxy::RawIterator::operator++() {
 		return *this;
 	}
 	
-	m_pblock = &m_base.get_block(m_position / (m_base.blocksize));
+	m_pblock = &m_base.get_block(m_position / (m_base.blocksize),this->is_writable);
 	m_this_block_pos = m_next_block_pos;
 	m_next_block_pos += m_base.blocksize;
 	return *this;
