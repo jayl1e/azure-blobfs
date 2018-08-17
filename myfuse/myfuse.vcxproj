@@ -19,23 +19,31 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BasicFile.cpp" />
     <ClCompile Include="blobfuse.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="BlobProxy.cpp" />
+    <ClCompile Include="Blocks.cpp" />
+    <ClCompile Include="DirectoryFile.cpp" />
     <ClCompile Include="hello.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="myBlobAdapter.cpp" />
     <ClCompile Include="myutils.cpp" />
+    <ClCompile Include="RegularFile.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BasicFile.h" />
     <ClInclude Include="blobfuse.h" />
     <ClInclude Include="BlobProxy.h" />
+    <ClInclude Include="Blocks.h" />
+    <ClInclude Include="DirectoryFile.h" />
     <ClInclude Include="myutils.h" />
+    <ClInclude Include="RegularFile.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -114,6 +122,8 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <AdditionalDependencies>dokanfuse1.lib</AdditionalDependencies>
@@ -143,6 +153,8 @@
       <ConformanceMode>true</ConformanceMode>
       <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

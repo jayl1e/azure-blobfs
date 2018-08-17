@@ -22,8 +22,8 @@ extern struct fuse_operations azs_fuse_operations;
 using namespace concurrency;
 
 int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
-
-	vector<int> a = { 1,2,3 };
+	utility::uuid f = utility::new_uuid();
+	wcout << utility::uuid_to_string(f)<<endl;
 
 	char ** cargv = new char*[argc];
 

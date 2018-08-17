@@ -1,6 +1,7 @@
 #include "BlobProxy.h"
 
-#include <algorithm>
+#include <algorithm> 
+
 
 BlobProxy::BlobProxy(const utility::string_t& _name,bool _managed, unique_ptr<storage::cloud_block_blob>&& _pblob):name(_name),managed(_managed),pblob(std::move(_pblob))
 {

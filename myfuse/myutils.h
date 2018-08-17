@@ -3,6 +3,7 @@
 #define MYUTILS_H
 
 #include <string>
+#include <cpprest/details/basic_types.h>
 
 #define LOG_EMERG 0
 #define LOG_ALERT 1
@@ -21,5 +22,13 @@ void openlog(const char * log_ident,int flag, int facility);
 void closelog();
 std::string wstring2string(const std::wstring& ws);
 std::wstring string2wstring(const std::string& as);
+
+
+#ifdef _UTF16_STRINGS
+#define my_to_string(x) std::to_wstring(x)
+#else
+#define my_to_string(x) std::to_string(x)
+#endif
+
 
 #endif // !myutils

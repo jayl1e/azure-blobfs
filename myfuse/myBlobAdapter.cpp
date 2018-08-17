@@ -53,6 +53,7 @@ const std::string log_ident = "blobfuse";
 
 void print_usage()
 {
+	std::weak_ptr<azure::storage::cloud_blob_container> wkptr = azure_blob_container;
 	fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>]");
 	fprintf(stdout, "    [--use-https=true] [--file-cache-timeout-in-seconds=120] [--log-level=LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG]\n\n");
 	fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
@@ -370,7 +371,25 @@ int validate_storage_connection()
 
 		// Retrieve a reference to a previously created container.
 		auto azure_blob_container = blob_client.get_container_reference(string2wstring(str_options.containerName));
-		auto blob=azure_blob_container.get_block_blob_reference(L"root/my/haha.txt");
+		auto blob=azure_blob_container.get_block_blob_reference(L"sample.mpp4");
+		vector<uint8_t> rawdata;
+		rawdata.resize(0);
+		auto os=blob.open_write();
+		concurrency::streams::istream fis;
+		unordered_map<utility::string_t, utility::string_t> meta;
+		try {
+			meta[L"l_blocksize"] = L"4194304";
+			meta[L"l_filesize"] = L"0";
+			pplx::task<int> t([]()->int {this_thread::sleep_for(1s); return 1; });
+			cout<<t.get();
+
+		}
+		catch (azure::storage::storage_exception & e) {
+			cerr << e.result().http_status_code();
+		}
+
+		auto blocks = blob.download_block_list();
+
 		std::vector<std::uint8_t> vec;
 		auto ins = "hello";
 		vec.assign(ins, ins + 5);
@@ -744,6 +763,13 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 	concurrency::streams::container_buffer<std::vector<uint8_t>> ibuffer(contain);
 	concurrency::streams::istream istream(ibuffer);
 	blob.upload_from_stream(istream);
+	auto iter = file_map.find(name);
+	if (iter != file_map.end()) {
+		if(iter->second)delete iter->second;
+		file_map.erase(iter);
+	}
+	fi->fh = 0;
+	
 	return size;
 }
 
@@ -786,11 +812,17 @@ int azs_truncate(const char * path, FUSE_OFF_T offset) {
 	concurrency::streams::container_buffer<std::vector<uint8_t>> ibuffer(contain);
 	concurrency::streams::istream istream(ibuffer);
 	blob.upload_from_stream(istream);
+	auto iter = file_map.find(name);
+	if (iter != file_map.end()) {
+		if (iter->second)delete iter->second;
+		file_map.erase(iter);
+	}
 	return 0;
 }
 
 int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *fi) {
 	syslog(LOG_EMERG, "---ftruncate: fh %lld , offset %lld", fi->fh,offset);
+	fi->fh = 0;
 	return azs_truncate(path, offset);
 }
 
