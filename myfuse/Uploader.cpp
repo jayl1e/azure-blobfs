@@ -1,6 +1,37 @@
 #include "Uploader.h"
+#include <was/core.h>
+#include <thread>
+#include "BasicFile.h"
 
 using namespace l_blob_adapter;
+using namespace std::chrono_literals;
+
+void l_blob_adapter::Uploader::run()
+{
+	auto t=std::thread([]() {get_instance()->run_upload(); });
+	t.detach();
+}
+
+void l_blob_adapter::Uploader::stop()
+{
+	Uploader * instance = get_instance();
+	std::unique_lock<std::mutex> lock(instance->stop_mutex);
+	instance->stop_flag.store(true);
+	instance->stop_condition.wait(lock);
+	return;
+}
+
+void l_blob_adapter::Uploader::add_to_wait(pos_t pos)
+{
+	Uploader::get_instance()->add_to_queue(pos);
+}
+
+void l_blob_adapter::Uploader::add_to_queue(pos_t pos)
+{
+	auto now = std::chrono::system_clock::now();
+	std::lock_guard<std::mutex> guard(queue_mutex);
+	upload_queue.emplace(pos, now);
+}
 
 Uploader * l_blob_adapter::Uploader::get_instance()
 {
@@ -8,6 +39,7 @@ Uploader * l_blob_adapter::Uploader::get_instance()
 		std::lock_guard<std::mutex> lock(s_mutex);
 		if (instance == nullptr) {
 			instance = new Uploader();
+			instance->helper = unique_ptr<UploadHelper>(std::make_unique<BlockBlobUploadHelper>());
 		}
 	}
 	return instance;
@@ -17,7 +49,90 @@ Uploader::Uploader()
 {
 }
 
-
-Uploader::~Uploader()
+void l_blob_adapter::Uploader::run_upload()
 {
+	while (true)
+	{
+
+#ifdef DEBUG
+		std::wcout << L"queue size: " << upload_queue.size() << std::endl;
+#endif // DEBUG
+
+		bool is_empty;
+		UploadItem item;
+		{
+			std::lock_guard<std::mutex> guard(queue_mutex);
+			is_empty = upload_queue.empty();
+			if (!is_empty) {
+				item = upload_queue.front();
+			}
+			else {
+				if (stop_flag) {
+					stop_condition.notify_one();
+					return;
+				}
+			}
+		}
+		if (is_empty) {
+			std::this_thread::sleep_for(1s);
+			continue;
+		}
+		auto now = std::chrono::system_clock::now();
+		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now - item.time);
+		if (milliseconds.count() > this->timeout_in_milisecond) {
+			pplx::task<int> t = helper->generate_task(item.pos);
+			{
+				std::lock_guard<std::mutex> guard(queue_mutex);
+				upload_queue.pop();
+			}
+			int res = t.get();
+			if (res > 0) {
+				add_to_queue(item.pos);
+			}
+		}
+		else {
+			std::this_thread::sleep_for(1s);
+		}
+	}
+}
+
+std::mutex Uploader::s_mutex;
+Uploader* Uploader::instance=nullptr;
+extern int validate_storage_connection();
+
+pplx::task<int> l_blob_adapter::BlockBlobUploadHelper::generate_task(pos_t pos)
+{
+	return pplx::task<int>([pos]() {
+		try {
+			shared_ptr<BasicFile> pfile;//Todo get file ref
+			unique_ptr<Snapshot> snap = pfile->create_snap();
+			auto basefile = snap->basefile;
+			vector<concurrency::task<void>> tasks;
+			for (pos_t i = 0; i < snap->blocklist.size() ; i++) {
+				if (snap->blocklist.at(i).mode() == azure::storage::block_list_item::uncommitted) {
+					auto t = basefile->m_pblob->upload_block_async(snap->blocklist.at(i).id(), 
+						concurrency::streams::container_stream<vector<uint8_t>>::open_istream(Blocks::block_cache[snap->dirtyblock[i]].data), L"");
+					tasks.emplace_back(std::move(t));
+				}
+			}
+			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
+			tasks.reserve(0);
+			tasks.emplace_back(basefile->m_pblob->upload_block_list_async(snap->blocklist));
+			std::lock_guard<std::mutex> guard(basefile->blob_mutex);
+			basefile->m_pblob->metadata() = snap->metadata;
+			basefile->m_pblob->properties() = snap->properties;
+			tasks.emplace_back(basefile->m_pblob->upload_metadata_async());
+			tasks.emplace_back(basefile->m_pblob->upload_properties_async());
+			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
+		}
+		catch (azure::storage::storage_exception& e) {
+			if (e.retryable()) {
+				std::wcerr << L"error happen to be retried: " <<e.what()<< std::endl;
+				return 1;
+			}
+			else {
+				return -1;
+			}
+		}
+		return 0; });
 }

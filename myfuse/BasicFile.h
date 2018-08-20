@@ -48,6 +48,7 @@ namespace l_blob_adapter {
 	};
 
 	class Snapshot;
+	class BlockBlobUploadHelper;
 	
 
 	class BasicFile:public std::enable_shared_from_this<BasicFile>
@@ -61,7 +62,6 @@ namespace l_blob_adapter {
 
 		inline FileType type() { return this->m_type;};
 		inline bool exist() { return m_exist; };
-		void sync();//todo
 		unique_ptr<Snapshot> create_snap();
 
 	protected:
@@ -74,6 +74,7 @@ namespace l_blob_adapter {
 
 		guid_t m_file_identifier;
 		unique_ptr<cloud_block_blob> m_pblob;
+		std::mutex blob_mutex;
 
 		shared_timed_mutex m_mutex;
 		std::mutex up_mutex;
@@ -98,17 +99,19 @@ namespace l_blob_adapter {
 		azure::storage::cloud_blob_properties properties;
 		
 		friend class Snapshot;
+		friend class BlockBlobUploadHelper;
 	};
 
 	class Snapshot {
 	public:
 		vector<azure::storage::block_list_item> blocklist;
+		unordered_map<pos_t, pos_t> dirtyblock;
 		azure::storage::cloud_metadata metadata;
 		azure::storage::cloud_blob_properties properties;
 		shared_ptr<BasicFile> basefile;
 		std::unique_lock<std::mutex> uplock;
 		Snapshot(BasicFile& file, std::unique_lock<std::mutex> && uplock);
-		
+		virtual ~Snapshot();
 	};
 
 }

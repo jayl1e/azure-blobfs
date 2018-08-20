@@ -13,30 +13,7 @@ l_blob_adapter::BasicFile::~BasicFile()
 {
 }
 
-void l_blob_adapter::BasicFile::sync()
-{
-	std::lock_guard<shared_timed_mutex> guard(m_mutex);
-	this->m_pblob->upload_metadata_async();
-	this->m_pblob->upload_properties_async();
-	vector<concurrency::task<void>> tasks;
-	for (size_t i = 0; i < blocklist.size();i++) {
-		if (Blocks::block_cache[blocklist[i]].status == BlockStatus::B_Dirty) {
-			auto t=this->m_pblob->upload_block_async(utility::conversions::to_string_t(std::to_wstring(i)), concurrency::streams::container_stream<vector<uint8_t>>::open_istream(Blocks::block_cache[blocklist[i]].data),L"");
-			tasks.emplace_back(std::move(t));
-		}
-	}
-	auto joind_task = concurrency::when_all(std::begin(tasks), std::end(tasks)).then([this](concurrency::task<void> beforetasks)->bool {
-		try {
-			beforetasks.wait();
-		}
-		catch (...) {
-			return false;
-		}
-		m_pblob->upload_block_list_async(m_pblob->download_block_list());
-		return true;
-	});
 
-}
 
 unique_ptr<Snapshot> l_blob_adapter::BasicFile::create_snap()
 {
@@ -100,6 +77,7 @@ l_blob_adapter::Snapshot::Snapshot(BasicFile & file, std::unique_lock<std::mutex
 			std::lock_guard blockguard(block.mut);
 			if (block.status == BlockStatus::B_Dirty) {
 				block.status = BlockStatus::B_Uploading;
+				this->dirtyblock[index] = file.blocklist.at(index);
 				this->blocklist.emplace_back( my_to_string(index) , azure::storage::block_list_item::uncommitted );
 			}
 			else {
@@ -111,4 +89,27 @@ l_blob_adapter::Snapshot::Snapshot(BasicFile & file, std::unique_lock<std::mutex
 		}
 	}
 
+}
+
+l_blob_adapter::Snapshot::~Snapshot()
+{
+	std::unique_lock<std::shared_timed_mutex> lock(basefile->m_mutex);
+	if (basefile->status == FileStatus::F_Uploading) {
+		for (auto& pair : dirtyblock) {
+			//restore blocks
+			auto& block = Blocks::block_cache.at(pair.second);
+			std::lock_guard blockguard(block.mut);
+			if (block.status == BlockStatus::B_Uploading)block.status = BlockStatus::B_Clean;
+		}
+		basefile->status = FileStatus::F_Clean;
+	}
+	else if(basefile->status == FileStatus::F_Dirty){
+		for (auto& pair : dirtyblock) {
+			//restore blocks and maybe gc
+			auto& block = Blocks::block_cache.at(pair.second);
+			std::lock_guard blockguard(block.mut);
+			if (block.status == BlockStatus::B_Uploading)block.status = BlockStatus::B_Clean;
+			else if (block.status == BlockStatus::B_Up_Expired)block.status = BlockStatus::B_Expired;
+		}
+	}
 }

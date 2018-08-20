@@ -360,9 +360,9 @@ int validate_storage_connection()
 		const int defaultMaxConcurrency = 20;
 		utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 		storage_connection_string += U(";AccountName=");
-		storage_connection_string += string2wstring(str_options.accountName);
+		storage_connection_string += U("mystorageaccount27053");
 		storage_connection_string += U(";AccountKey=");
-		storage_connection_string += string2wstring(str_options.accountKey);
+		storage_connection_string += U("t14kVApN3SL7CKAz6WWj5ELz2iSM51pDzcr4MBP2Rqa7urEqDF/E7fIuGHkwIQkKCYUDKDoFF/G8deLsFU2zKA==");
 
 		azure::storage::cloud_storage_account storage_account = azure::storage::cloud_storage_account::parse(storage_connection_string);
 
@@ -370,33 +370,32 @@ int validate_storage_connection()
 		azure::storage::cloud_blob_client blob_client = storage_account.create_cloud_blob_client();
 
 		// Retrieve a reference to a previously created container.
-		auto azure_blob_container = blob_client.get_container_reference(string2wstring(str_options.containerName));
-		auto blob=azure_blob_container.get_block_blob_reference(L"sample.mpp4");
+		auto azure_blob_container = blob_client.get_container_reference(string2wstring("mystoragecontainer"));
+		auto blob=azure_blob_container.get_block_blob_reference(L"sample.mp4");
 		vector<uint8_t> rawdata;
 		rawdata.resize(0);
-		auto os=blob.open_write();
 		concurrency::streams::istream fis;
 		unordered_map<utility::string_t, utility::string_t> meta;
 		try {
-			meta[L"l_blocksize"] = L"4194304";
-			meta[L"l_filesize"] = L"0";
-			pplx::task<int> t([]()->int {this_thread::sleep_for(1s); return 1; });
-			cout<<t.get();
-
+			blob.download_attributes();
+			auto & me = blob.metadata();
+			me[L"h"] = L"1";
+			blob.upload_metadata();
+			auto blocks = blob.download_block_list();
 		}
-		catch (azure::storage::storage_exception & e) {
-			cerr << e.result().http_status_code();
+		catch (...) {
+			auto ptr = std::current_exception();
+			try {
+				std::rethrow_exception(ptr);
+			}
+			catch (azure::storage::storage_exception& e) {
+				cerr << e.retryable()<< e.what();
+				throw e;
+			}
+			
 		}
 
-		auto blocks = blob.download_block_list();
-
-		std::vector<std::uint8_t> vec;
-		auto ins = "hello";
-		vec.assign(ins, ins + 5);
-		concurrency::streams::container_buffer<std::vector<uint8_t>> buffer(vec);
-		concurrency::streams::istream istream(buffer);
-		blob.upload_from_stream(istream);
-		istream.close();
+		
 	}
 	return 0;
 }

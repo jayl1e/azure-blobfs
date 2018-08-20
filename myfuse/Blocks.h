@@ -32,7 +32,13 @@ namespace l_blob_adapter {
 
 
 	class BlockCache {
-
+	public:
+		static BlockCache* get_instance();
+	
+	private:
+		BlockCache() {};
+		static std::mutex s_mutex;
+		static BlockCache* instance;
 	};
 
 

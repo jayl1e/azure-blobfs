@@ -28,10 +28,15 @@
     <ClCompile Include="Blocks.cpp" />
     <ClCompile Include="DirectoryFile.cpp" />
     <ClCompile Include="hello.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="main.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="myBlobAdapter.cpp" />
     <ClCompile Include="myutils.cpp" />
     <ClCompile Include="RegularFile.cpp" />
+    <ClCompile Include="Uploader.cpp" />
+    <ClCompile Include="UploaderTest.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -44,6 +49,7 @@
     <ClInclude Include="DirectoryFile.h" />
     <ClInclude Include="myutils.h" />
     <ClInclude Include="RegularFile.h" />
+    <ClInclude Include="Uploader.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
