@@ -111,18 +111,18 @@ pplx::task<int> l_blob_adapter::BlockBlobUploadHelper::generate_task(pos_t pos)
 			for (pos_t i = 0; i < snap->blocklist.size() ; i++) {
 				if (snap->blocklist.at(i).mode() == azure::storage::block_list_item::uncommitted) {
 					auto t = basefile->m_pblob->upload_block_async(snap->blocklist.at(i).id(), 
-						concurrency::streams::container_stream<vector<uint8_t>>::open_istream(Blocks::block_cache[snap->dirtyblock[i]].data), L"");
+						concurrency::streams::container_stream<vector<uint8_t>>::open_istream(BlockCache::get(snap->dirtyblock[i])->data), L"");
 					tasks.emplace_back(std::move(t));
 				}
 			}
 			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
-			tasks.reserve(0);
+			tasks.resize(0);
 			tasks.emplace_back(basefile->m_pblob->upload_block_list_async(snap->blocklist));
 			std::lock_guard<std::mutex> guard(basefile->blob_mutex);
 			basefile->m_pblob->metadata() = snap->metadata;
-			basefile->m_pblob->properties() = snap->properties;
+			//basefile->m_pblob->properties() = snap->properties;
 			tasks.emplace_back(basefile->m_pblob->upload_metadata_async());
-			tasks.emplace_back(basefile->m_pblob->upload_properties_async());
+			//tasks.emplace_back(basefile->m_pblob->upload_properties_async());
 			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
 		}
 		catch (azure::storage::storage_exception& e) {

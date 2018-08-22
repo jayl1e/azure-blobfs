@@ -1,11 +1,13 @@
 #pragma once
 
 #include "BasicFile.h"
+#include "Block.h"
 #include <queue>
 #include <future>
 #include <chrono>
 #include <condition_variable>
 #include <atomic>
+
 
 namespace l_blob_adapter {
 

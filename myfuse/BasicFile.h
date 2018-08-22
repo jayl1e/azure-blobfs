@@ -5,25 +5,11 @@
 #include <unordered_map>
 #include <was/blob.h>
 #include <vector>
-#include "Blocks.h"
+#include "Block.h"
 
 namespace l_blob_adapter {
 	//guid_t means unique id (uuid)
-	using guid_t = utility::uuid;
-	using std::ptrdiff_t;
-	using pos_t= std::ptrdiff_t;
-	using std::size_t;
-	using std::uint8_t;
-	using std::unique_ptr;
-	using std::shared_ptr;
-	using std::wstring;
-	using std::shared_mutex;
-	using std::shared_timed_mutex;
-	using azure::storage::cloud_page_blob;
-	using azure::storage::cloud_block_blob;
-	using std::unordered_map;
-	using std::vector;
-	using utility::string_t;
+	
 
 	class Block;
 	class Synchornizor;
@@ -64,13 +50,13 @@ namespace l_blob_adapter {
 		inline bool exist() { return m_exist; };
 		unique_ptr<Snapshot> create_snap();
 
-	protected:
+	public:
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t read_bytes(const pos_t offset, const size_t size, const uint8_t * buf); 
 		size_t set_attr(const string_t& key, const string_t& val); //lock file
 		size_t resize(size_t size);//lock file
 
-	private:
+	public:
 
 		guid_t m_file_identifier;
 		unique_ptr<cloud_block_blob> m_pblob;

@@ -25,8 +25,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="BlobProxy.cpp" />
-    <ClCompile Include="Blocks.cpp" />
-    <ClCompile Include="DirectoryFile.cpp" />
+    <ClCompile Include="Block.cpp" />
+    <ClCompile Include="Cache.cpp" />
     <ClCompile Include="hello.cpp" />
     <ClCompile Include="main.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -34,7 +34,6 @@
     </ClCompile>
     <ClCompile Include="myBlobAdapter.cpp" />
     <ClCompile Include="myutils.cpp" />
-    <ClCompile Include="RegularFile.cpp" />
     <ClCompile Include="Uploader.cpp" />
     <ClCompile Include="UploaderTest.cpp" />
   </ItemGroup>
@@ -45,10 +44,9 @@
     <ClInclude Include="BasicFile.h" />
     <ClInclude Include="blobfuse.h" />
     <ClInclude Include="BlobProxy.h" />
-    <ClInclude Include="Blocks.h" />
-    <ClInclude Include="DirectoryFile.h" />
+    <ClInclude Include="Block.h" />
+    <ClInclude Include="Cache.h" />
     <ClInclude Include="myutils.h" />
-    <ClInclude Include="RegularFile.h" />
     <ClInclude Include="Uploader.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
