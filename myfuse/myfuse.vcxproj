@@ -46,6 +46,7 @@
     <ClInclude Include="BlobProxy.h" />
     <ClInclude Include="Block.h" />
     <ClInclude Include="Cache.h" />
+    <ClInclude Include="Common.h" />
     <ClInclude Include="myutils.h" />
     <ClInclude Include="Uploader.h" />
   </ItemGroup>

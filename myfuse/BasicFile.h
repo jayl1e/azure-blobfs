@@ -1,14 +1,9 @@
 #pragma once
-#include <memory>
-#include <string>
-#include <shared_mutex>
-#include <unordered_map>
-#include <was/blob.h>
-#include <vector>
+#include "Common.h"
 #include "Block.h"
 
 namespace l_blob_adapter {
-	//guid_t means unique id (uuid)
+	
 	
 
 	class Block;
@@ -27,11 +22,6 @@ namespace l_blob_adapter {
 		GC_Old
 	};
 
-	enum class FileStatus {
-		F_Clean,
-		F_Dirty,
-		F_Uploading,
-	};
 
 	class Snapshot;
 	class BlockBlobUploadHelper;
@@ -44,7 +34,7 @@ namespace l_blob_adapter {
 		virtual ~BasicFile();
 
 		static unique_ptr<BasicFile> get(guid_t file_identifier);
-		static unique_ptr<BasicFile> create(guid_t file_identifier);
+		static unique_ptr<BasicFile> create(guid_t file_identifier, const azure::storage::cloud_blob_container& container);
 
 		inline FileType type() { return this->m_type;};
 		inline bool exist() { return m_exist; };
@@ -52,7 +42,7 @@ namespace l_blob_adapter {
 
 	public:
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
-		size_t read_bytes(const pos_t offset, const size_t size, const uint8_t * buf); 
+		size_t read_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t set_attr(const string_t& key, const string_t& val); //lock file
 		size_t resize(size_t size);//lock file
 
@@ -64,7 +54,7 @@ namespace l_blob_adapter {
 
 		shared_timed_mutex m_mutex;
 		std::mutex up_mutex;
-		FileStatus status;
+		ItemStatus status;
 
 
 		const Block& get_read_block(const size_t blockindex); //lock file
@@ -94,7 +84,7 @@ namespace l_blob_adapter {
 		unordered_map<pos_t, pos_t> dirtyblock;
 		azure::storage::cloud_metadata metadata;
 		azure::storage::cloud_blob_properties properties;
-		shared_ptr<BasicFile> basefile;
+		BasicFile* basefile;
 		std::unique_lock<std::mutex> uplock;
 		Snapshot(BasicFile& file, std::unique_lock<std::mutex> && uplock);
 		virtual ~Snapshot();
