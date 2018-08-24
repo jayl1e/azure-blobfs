@@ -42,7 +42,7 @@ namespace l_blob_adapter {
 
 	public:
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
-		size_t read_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
+		size_t read_bytes(const pos_t offset, const size_t size, uint8_t * buf);
 		size_t set_attr(const string_t& key, const string_t& val); //lock file
 		size_t resize(size_t size);//lock file
 
@@ -57,8 +57,8 @@ namespace l_blob_adapter {
 		ItemStatus status;
 
 
-		const Block& get_read_block(const size_t blockindex); //lock file
-		Block& get_write_block(const size_t blockindex); //lock file
+		const Block* get_read_block(const size_t blockindex); //lock file
+		Block* get_write_block(const size_t blockindex); //lock file
 
 		//file block chain
 		vector<pos_t> blocklist;

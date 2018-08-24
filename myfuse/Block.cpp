@@ -1,7 +1,8 @@
 #include "Block.h"
+#include <chrono>
 
 using namespace l_blob_adapter;
-
+using namespace std::chrono_literals;
 
 
 l_blob_adapter::Block::Block(size_t blocksize):data(blocksize), block_index(-1)
@@ -10,7 +11,12 @@ l_blob_adapter::Block::Block(size_t blocksize):data(blocksize), block_index(-1)
 
 int l_blob_adapter::Block::gc_notify(pos_t pos)
 {
-	return 0;
+	std::unique_lock<std::shared_timed_mutex> lock(basefile->m_mutex, std::try_to_lock);
+	if (lock.owns_lock()) {
+		basefile->blocklist.at(this->block_index) = 0;
+		return 0;
+	}
+	return -1;
 }
 
 void l_blob_adapter::Block::clear()

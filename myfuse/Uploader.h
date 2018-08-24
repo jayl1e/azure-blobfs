@@ -33,6 +33,7 @@ namespace l_blob_adapter {
 	public:
 		static void run();
 		static void stop();
+		static void wait();
 		void run_upload();
 		static void add_to_wait(pos_t pos);
 		static Uploader* get_instance();

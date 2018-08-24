@@ -11,7 +11,18 @@ using namespace std;
 using namespace l_blob_adapter;
 using namespace chrono_literals;
 
+class UniqueTest {
+public:
+	virtual ~UniqueTest() {
+		wcout << "destructor runs"<<endl;
+	}
+};
+
 int wmain(int argc, wchar_t *argv[]) {
+
+	Uploader::run();
+
+
 	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 	storage_connection_string += U(";AccountName=");
 	storage_connection_string += U("mystorageaccount27052");
@@ -29,21 +40,17 @@ int wmain(int argc, wchar_t *argv[]) {
 
 	auto uid = utility::new_uuid();
 	auto pf = BasicFile::create(uid, azure_blob_container);
-	pf->resize(1<<22);
+	pf->resize((1<<23)+1);
 
 	auto& cache = BlockCache::instance()->cache;
+	
+	this_thread::sleep_for(2200ms);
+	pf->resize(1 << 23);
+	size_t readsize = 1<<22;
+	uint8_t * buf = new uint8_t[readsize];
+	pf->read_bytes(1, readsize, buf);
 
-	auto blob = azure_blob_container.get_block_blob_reference(L"abc");
-	vector<uint8_t> rawdata;
-	rawdata.resize(1000);
-	//blob.upload_block(L"0", concurrency::streams::container_stream< vector<uint8_t> >::open_istream(rawdata), L"");
-	auto wr = blob.open_write();
-	for(int i=0;i<10000;i++)
-		wr.write('c');
-	wr.close();
-
-	Uploader::run();
-	Uploader::add_to_wait((pos_t)(pf.get()));
-	Uploader::stop();
+	pf->resize((1<<20)*9+1);
+	Uploader::wait();
 	return 0;
 }

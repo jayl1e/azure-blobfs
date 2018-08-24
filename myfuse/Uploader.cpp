@@ -21,6 +21,13 @@ void l_blob_adapter::Uploader::stop()
 	return;
 }
 
+void l_blob_adapter::Uploader::wait()
+{
+	Uploader * instance = get_instance();
+	std::unique_lock<std::mutex> lock(instance->stop_mutex);
+	instance->stop_condition.wait(lock);
+}
+
 void l_blob_adapter::Uploader::add_to_wait(pos_t pos)
 {
 	Uploader::get_instance()->add_to_queue(pos);
@@ -107,26 +114,18 @@ pplx::task<int> l_blob_adapter::BlockBlobUploadHelper::generate_task(pos_t pos)
 			BasicFile* pfile=((BasicFile*)(pos));//Todo get file ref
 			unique_ptr<Snapshot> snap = pfile->create_snap();
 			auto basefile = snap->basefile;
-
-			vector<uint8_t> rawdata;
-			rawdata.resize(1000);
-			pfile->m_pblob->upload_block(L"l_0001",
-				concurrency::streams::container_stream<vector<uint8_t>>::open_istream(rawdata), L"");
-
-
-
 			vector<concurrency::task<void>> tasks;
 			
 			for (pos_t i = 0; i < snap->blocklist.size() ; i++) {
 				if (snap->blocklist.at(i).mode() == azure::storage::block_list_item::uncommitted) {
-					basefile->m_pblob->upload_block(snap->blocklist.at(i).id(), 
+					auto t=basefile->m_pblob->upload_block_async(snap->blocklist.at(i).id(), 
 						concurrency::streams::container_stream<vector<uint8_t>>::open_istream(BlockCache::get(snap->dirtyblock[i])->data), L"");
-					//tasks.emplace_back(std::move(t));
+					tasks.emplace_back(std::move(t));
 				}
 			}
-			//concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
+			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
 			tasks.resize(0);
-			tasks.emplace_back(basefile->m_pblob->upload_block_list_async(snap->blocklist));
+			basefile->m_pblob->upload_block_list(snap->blocklist);
 			std::lock_guard<std::mutex> guard(basefile->blob_mutex);
 			basefile->m_pblob->metadata() = snap->metadata;
 			//basefile->m_pblob->properties() = snap->properties;

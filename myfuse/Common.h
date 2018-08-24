@@ -24,6 +24,6 @@ namespace l_blob_adapter {
 	using std::vector;
 	using utility::string_t;
 
-	const size_t default_cache_size = 10000;
-	const size_t default_block_size = 1<<20;
+	const size_t default_cache_size = 1000;
+	const size_t default_block_size = 1<<18;
 }

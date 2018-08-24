@@ -75,28 +75,33 @@ pos_t l_blob_adapter::BasicCache::put_new_item(unique_ptr<CacheItem>&& item)
 
 pos_t l_blob_adapter::BasicCache::get_free_from_list()
 {
-	pos_t pos = cache.at(0).next;
-	while (pos != 1)
-	{
-		CacheItem & item = * (cache.at(pos).item);
-		std::lock_guard<std::mutex> lock(item.status_mutex);
-		if (item.status==ItemStatus::Expired) {
-			item.status = ItemStatus::Ready;
-			put_item_back(pos);
-			return pos;
-		}
-		else if (item.status == ItemStatus::Clean) {
-			int response = item.gc_notify(pos);
-			if (!response) {
-				item.clear();
+	while (true) {
+
+		pos_t pos = cache.at(0).next;
+		while (pos != 1)
+		{
+			CacheItem & item = *(cache.at(pos).item);
+			std::lock_guard<std::mutex> lock(item.status_mutex);
+			if (item.status == ItemStatus::Expired) {
 				item.status = ItemStatus::Ready;
+				put_item_back(pos);
 				return pos;
 			}
-			else {
-				put_item_back(pos);
+			else if (item.status == ItemStatus::Clean) {
+				int response = item.gc_notify(pos);
+				if (!response) {
+					item.clear();
+					item.status = ItemStatus::Ready;
+					return pos;
+				}
+				else {
+					put_item_back(pos);
+				}
 			}
+			pos = cache.at(pos).next;
 		}
-		pos = cache.at(pos).next;
+
 	}
+	
 	return 0;
 }
