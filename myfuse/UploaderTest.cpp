@@ -11,13 +11,6 @@ using namespace std;
 using namespace l_blob_adapter;
 using namespace chrono_literals;
 
-class UniqueTest {
-public:
-	virtual ~UniqueTest() {
-		wcout << "destructor runs"<<endl;
-	}
-};
-
 int wmain(int argc, wchar_t *argv[]) {
 
 	Uploader::run();
