@@ -27,6 +27,7 @@
     <ClCompile Include="BlobProxy.cpp" />
     <ClCompile Include="Block.cpp" />
     <ClCompile Include="Cache.cpp" />
+    <ClCompile Include="File.cpp" />
     <ClCompile Include="hello.cpp" />
     <ClCompile Include="main.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -47,6 +48,7 @@
     <ClInclude Include="Block.h" />
     <ClInclude Include="Cache.h" />
     <ClInclude Include="Common.h" />
+    <ClInclude Include="File.h" />
     <ClInclude Include="myutils.h" />
     <ClInclude Include="Uploader.h" />
   </ItemGroup>

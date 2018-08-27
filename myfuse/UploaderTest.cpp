@@ -21,8 +21,6 @@ public:
 int wmain(int argc, wchar_t *argv[]) {
 
 	Uploader::run();
-
-
 	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 	storage_connection_string += U(";AccountName=");
 	storage_connection_string += U("mystorageaccount27052");
@@ -38,19 +36,18 @@ int wmain(int argc, wchar_t *argv[]) {
 	auto azure_blob_container = blob_client.get_container_reference(L"mystoragecontainer");
 	
 
-	auto uid = utility::new_uuid();
-	auto pf = BasicFile::create(uid, azure_blob_container);
-	pf->resize((1<<23)+1);
+	auto uid = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35388"));
+	auto pf = BasicFile::get(uid, azure_blob_container);
 
 	auto& cache = BlockCache::instance()->cache;
 	
-	this_thread::sleep_for(2200ms);
-	pf->resize(1 << 23);
 	size_t readsize = 1<<22;
 	uint8_t * buf = new uint8_t[readsize];
-	pf->read_bytes(1, readsize, buf);
-
-	pf->resize((1<<20)*9+1);
-	Uploader::wait();
+	uint8_t towrite[] = "hello world how are you";
+	auto readcnts=pf->read_bytes(0, readsize, buf);
+	pf->write_bytes(0, sizeof(towrite), towrite);
+	pf->resize((1<<23) -1);
+	
+	Uploader::stop();
 	return 0;
 }

@@ -16,6 +16,22 @@ l_blob_adapter::BasicFile::~BasicFile()
 {
 }
 
+unique_ptr<BasicFile> l_blob_adapter::BasicFile::get(guid_t file_identifier, const azure::storage::cloud_blob_container& container)
+{
+	auto pblob = std::make_unique<cloud_block_blob>(container.get_block_blob_reference(utility::uuid_to_string(file_identifier)));
+	if(! pblob->exists())return unique_ptr<BasicFile>();
+	auto ptr = std::make_unique<BasicFile>();
+	ptr->m_file_identifier = file_identifier;
+	pblob->download_attributes();
+	ptr->blocksize = std::stoll(pblob->metadata()[_XPLATSTR("l_blocksize")]);
+	ptr->filesize = std::stoll(pblob->metadata()[_XPLATSTR("l_filesize")]);
+	if (ptr->filesize) {
+		ptr->blocklist.resize((ptr->filesize - 1) / ptr->blocksize + 1);
+	}
+	ptr->m_pblob = std::move(pblob);
+	return ptr;
+}
+
 unique_ptr<BasicFile> l_blob_adapter::BasicFile::create(guid_t file_identifier, const azure::storage::cloud_blob_container& container)
 {
 	//todo
@@ -25,16 +41,48 @@ unique_ptr<BasicFile> l_blob_adapter::BasicFile::create(guid_t file_identifier, 
 	ptr->filesize = 0;
 	ptr->m_exist = true;
 	ptr->m_pblob = std::make_unique<cloud_block_blob>(container.get_block_blob_reference(utility::uuid_to_string( file_identifier)));
+	ptr->status = ItemStatus::Dirty;
 	Uploader::add_to_wait((pos_t)(ptr.get()));
 	return ptr;
 }
-
-
 
 unique_ptr<Snapshot> l_blob_adapter::BasicFile::create_snap()
 {
 	std::unique_lock<std::mutex> uplock(this->up_mutex);
 	return std::make_unique<Snapshot>(*this,std::move(uplock));
+}
+
+size_t l_blob_adapter::BasicFile::write_bytes(const pos_t offset, const size_t size, const uint8_t * buf)
+{
+	if (offset < 0 || size <= 0)return 0;
+	if (offset + size > this->filesize) {
+		this->resize(offset + size);
+	}
+	pos_t start_index = ((offset) / this->blocksize);
+	pos_t end_index = ((offset + size - 1) / this->blocksize);
+	pos_t cblock = offset - start_index * blocksize, cbuf = 0, index = start_index;
+	Block* p =nullptr;
+	if (start_index == end_index) {
+		p = this->get_write_block_copy(start_index);
+		for (cbuf = 0; cbuf < size; ++cbuf) p->data[cblock + cbuf]= buf[cbuf];
+	}
+	else {
+		p = this->get_write_block_copy(start_index);
+		for (cbuf = 0; cbuf<blocksize - cblock; ++cbuf)p->data[cblock + cbuf]= buf[cbuf];
+		for (index = start_index + 1; index < end_index; index++)
+		{
+			p = get_write_block(index);
+			for (cblock = 0; cblock < blocksize; ++cblock, ++cbuf)p->data[cblock]= buf[cbuf];
+		}
+		p = get_write_block_copy(end_index);
+		for (cblock = 0; cbuf < size; ++cbuf, ++cblock)p->data[cblock]= buf[cbuf];
+	}
+	std::lock_guard lock(this->m_mutex);
+	if (this->status != ItemStatus::Dirty) {
+		this->status = ItemStatus::Dirty;
+		Uploader::add_to_wait((pos_t)this);
+	}
+	return size;
 }
 
 size_t l_blob_adapter::BasicFile::read_bytes(const pos_t offset, const size_t size, uint8_t * buf)
@@ -117,10 +165,11 @@ const Block * l_blob_adapter::BasicFile::get_read_block(const size_t blockindex)
 		buffer.set_buffer_size(this->blocksize, std::ios_base::out);
 		auto ostream = concurrency::streams::ostream(buffer);
 		m_pblob->download_range_to_stream(ostream, blockindex*this->blocksize, this->blocksize);
-		// may be GC
 		pos_t blockpos = BlockCache:: get_free();
 		Block * pblock = BlockCache::get(blockpos);
 		std::lock_guard blockguard(pblock->status_mutex);
+		pblock->basefile = this;
+		pblock->block_index = blockindex;
 		pblock->data.assign(buffer.collection().begin(), buffer.collection().end());
 		pblock->status = ItemStatus::Clean;
 		this->blocklist.at(blockindex) = blockpos;
@@ -160,12 +209,57 @@ Block * l_blob_adapter::BasicFile::get_write_block(const size_t blockindex)
 		pos_t blockpos = BlockCache::get_free();
 		Block * pblock = BlockCache::get(blockpos);
 		pblock->basefile = this;
+		pblock->block_index = blockindex;
 		std::lock_guard blockguard(pblock->status_mutex);
 		pblock->status = ItemStatus::Dirty;
 		this->blocklist.at(blockindex) = blockpos;
 		return pblock;
 	}
-	
+}
+
+Block * l_blob_adapter::BasicFile::get_write_block_copy(const size_t blockindex)
+{
+	std::lock_guard guard(m_mutex);
+	pos_t pos;
+	pos = blocklist.at(blockindex);
+	Block * pblock = nullptr;
+
+	if (pos> 0) {
+		pblock = (BlockCache::get(pos));
+		std::lock_guard blockguard(pblock->status_mutex);
+
+		if (pblock->status == ItemStatus::Clean) {
+			pblock->status = ItemStatus::Dirty;
+		}
+		else if (pblock->status == ItemStatus::Uploading) {
+			Block *nblock = nullptr;
+			pos_t npos = 0;
+			pblock->status = ItemStatus::Up_Expired;
+			npos = BlockCache::get_free();
+			nblock = BlockCache::get(npos);
+			std::lock_guard<std::mutex> nlock(nblock->status_mutex);
+			*nblock = *pblock;
+			nblock->status = ItemStatus::Dirty;
+			blocklist.at(blockindex) = npos;
+			pblock = nblock;
+		}
+		return pblock;
+	}
+	else {
+		auto buffer = concurrency::streams::container_buffer< vector<uint8_t> >();
+		buffer.set_buffer_size(this->blocksize, std::ios_base::out);
+		auto ostream = concurrency::streams::ostream(buffer);
+		m_pblob->download_range_to_stream(ostream, blockindex*this->blocksize, this->blocksize);
+		pos_t blockpos = BlockCache::get_free();
+		Block * pblock = BlockCache::get(blockpos);
+		std::lock_guard blockguard(pblock->status_mutex);
+		pblock->basefile = this;
+		pblock->block_index = blockindex;
+		pblock->data.assign(buffer.collection().begin(), buffer.collection().end());
+		pblock->status = ItemStatus::Clean;
+		this->blocklist.at(blockindex) = blockpos;
+		return pblock;
+	}
 }
 
 
@@ -179,6 +273,7 @@ l_blob_adapter::Snapshot::Snapshot(BasicFile & file, std::unique_lock<std::mutex
 	this->metadata = file.metadata;
 	this->metadata[_XPLATSTR("l_filesize")] = my_to_string(file.filesize);
 	this->metadata[_XPLATSTR("l_blocksize")] = my_to_string(file.blocksize);
+	this->metadata[_XPLATSTR("l_nlink")] = my_to_string(file.nlink);
 	this->properties = file.properties;
 	for (pos_t index = 0; index < file.blocklist.size();index++) {
 		utf8ostringstream ss;

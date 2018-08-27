@@ -33,20 +33,24 @@ namespace l_blob_adapter {
 		BasicFile();
 		virtual ~BasicFile();
 
-		static unique_ptr<BasicFile> get(guid_t file_identifier);
+		static unique_ptr<BasicFile> get(guid_t file_identifier, const azure::storage::cloud_blob_container& container);
 		static unique_ptr<BasicFile> create(guid_t file_identifier, const azure::storage::cloud_blob_container& container);
 
 		inline FileType type() { return this->m_type;};
 		inline bool exist() { return m_exist; };
-		unique_ptr<Snapshot> create_snap();
+		unique_ptr<Snapshot> create_snap(); 
 
-	public:
+	protected:
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t read_bytes(const pos_t offset, const size_t size, uint8_t * buf);
-		size_t set_attr(const string_t& key, const string_t& val); //lock file
+		size_t set_meta(const string_t& key, const string_t& val); //lock file
+		string_t get_meta(const string_t& key);
 		size_t resize(size_t size);//lock file
 
-	public:
+
+	protected:
+
+		size_t get_blockcnt() { return this->filesize ? (this->filesize - 1) / this->blocksize : 0; }
 
 		guid_t m_file_identifier;
 		unique_ptr<cloud_block_blob> m_pblob;
@@ -59,6 +63,8 @@ namespace l_blob_adapter {
 
 		const Block* get_read_block(const size_t blockindex); //lock file
 		Block* get_write_block(const size_t blockindex); //lock file
+		Block* get_write_block_copy(const size_t blockindex); //lock file
+
 
 		//file block chain
 		vector<pos_t> blocklist;
@@ -66,9 +72,9 @@ namespace l_blob_adapter {
 		//property
 		size_t blocksize;
 		size_t filesize;
-		size_t totalsize;
 		bool m_exist;
 		FileType m_type;
+		int64_t nlink;
 
 		//metadata
 		unordered_map<string_t, string_t> metadata;
@@ -76,6 +82,7 @@ namespace l_blob_adapter {
 		
 		friend class Snapshot;
 		friend class BlockBlobUploadHelper;
+		friend class Block;
 	};
 
 	class Snapshot {

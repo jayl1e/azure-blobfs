@@ -13,7 +13,7 @@ int l_blob_adapter::Block::gc_notify(pos_t pos)
 {
 	std::unique_lock<std::shared_timed_mutex> lock(basefile->m_mutex, std::try_to_lock);
 	if (lock.owns_lock()) {
-		basefile->blocklist.at(this->block_index) = 0;
+		if(basefile->blocklist.at(this->block_index)==pos)basefile->blocklist.at(this->block_index) = 0;
 		return 0;
 	}
 	return -1;
