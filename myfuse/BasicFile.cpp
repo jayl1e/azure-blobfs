@@ -25,6 +25,14 @@ unique_ptr<BasicFile> l_blob_adapter::BasicFile::get(guid_t file_identifier, con
 	pblob->download_attributes();
 	ptr->blocksize = std::stoll(pblob->metadata()[_XPLATSTR("l_blocksize")]);
 	ptr->filesize = std::stoll(pblob->metadata()[_XPLATSTR("l_filesize")]);
+	ptr->nlink = std::stoll(pblob->metadata()[_XPLATSTR("l_nlink")]);
+	if (pblob->metadata()[_XPLATSTR("l_type")] == _XPLATSTR("dir")) {
+		ptr->m_type = FileType::F_Directory;
+	}
+	else {
+		ptr->m_type = FileType::F_Regular;
+	}
+
 	if (ptr->filesize) {
 		ptr->blocklist.resize((ptr->filesize - 1) / ptr->blocksize + 1);
 	}
@@ -32,15 +40,17 @@ unique_ptr<BasicFile> l_blob_adapter::BasicFile::get(guid_t file_identifier, con
 	return ptr;
 }
 
-unique_ptr<BasicFile> l_blob_adapter::BasicFile::create(guid_t file_identifier, const azure::storage::cloud_blob_container& container)
+unique_ptr<BasicFile> l_blob_adapter::BasicFile::create(guid_t file_identifier,FileType type, const azure::storage::cloud_blob_container& container)
 {
 	//todo
 	auto ptr= std::make_unique<BasicFile>();
 	ptr->m_file_identifier = file_identifier;
 	ptr->blocksize = default_block_size;
 	ptr->filesize = 0;
+	ptr->nlink = 0;
 	ptr->m_exist = true;
 	ptr->m_pblob = std::make_unique<cloud_block_blob>(container.get_block_blob_reference(utility::uuid_to_string( file_identifier)));
+	ptr->m_type = type;
 	ptr->status = ItemStatus::Dirty;
 	Uploader::add_to_wait((pos_t)(ptr.get()));
 	return ptr;
@@ -111,7 +121,7 @@ size_t l_blob_adapter::BasicFile::read_bytes(const pos_t offset, const size_t si
 
 size_t l_blob_adapter::BasicFile::resize(size_t size)
 {
-	std::lock_guard<std::shared_timed_mutex> lock(m_mutex);
+	std::unique_lock<std::shared_timed_mutex> lock(m_mutex);
 	size_t new_size = 0, old_size=0;
 	if(size>0)new_size=((size - 1) / this->blocksize +1);
 	if(this->filesize>0)old_size = ((this->filesize - 1) / this->blocksize + 1);
@@ -119,6 +129,7 @@ size_t l_blob_adapter::BasicFile::resize(size_t size)
 		blocklist.resize(new_size, 0);
 		for (size_t i = old_size; i < new_size; ++i) {
 			pos_t blockpos = BlockCache::get_free();
+
 			Block * pblock = BlockCache::get(blockpos);
 			pblock->basefile = this;
 			pblock->block_index = i;
@@ -130,6 +141,7 @@ size_t l_blob_adapter::BasicFile::resize(size_t size)
 	else if(new_size<old_size){
 		for (size_t i = new_size; i < old_size; i++) {
 			pos_t pos = blocklist.at(i);
+			if (pos <= 0)continue;
 			Block* block = BlockCache::get(pos);
 			std::lock_guard<std::mutex> blocklock(block->status_mutex);
 			if (block->status == ItemStatus::Uploading)block->status = ItemStatus::Up_Expired;
@@ -152,6 +164,31 @@ size_t l_blob_adapter::BasicFile::resize(size_t size)
 	
 	return size;
 }
+
+void l_blob_adapter::BasicFile::inc_nlink()
+{
+	std::lock_guard lock(this->m_mutex);
+	this->nlink++;
+	if (this->status != ItemStatus::Dirty) {
+		this->status = ItemStatus::Dirty;
+		Uploader::add_to_wait((pos_t)this);
+	}
+}
+
+void l_blob_adapter::BasicFile::dec_nlink()
+{
+	std::lock_guard lock(this->m_mutex);
+	this->nlink--;
+	if (nlink <= 0) {
+		this->m_exist = false;
+	}
+	if (this->status != ItemStatus::Dirty) {
+		this->status = ItemStatus::Dirty;
+		Uploader::add_to_wait((pos_t)this);
+	}
+}
+
+
 
 const Block * l_blob_adapter::BasicFile::get_read_block(const size_t blockindex)
 {
@@ -274,6 +311,12 @@ l_blob_adapter::Snapshot::Snapshot(BasicFile & file, std::unique_lock<std::mutex
 	this->metadata[_XPLATSTR("l_filesize")] = my_to_string(file.filesize);
 	this->metadata[_XPLATSTR("l_blocksize")] = my_to_string(file.blocksize);
 	this->metadata[_XPLATSTR("l_nlink")] = my_to_string(file.nlink);
+	if (file.m_type == FileType::F_Directory) {
+		this->metadata[_XPLATSTR("l_type")] = _XPLATSTR("directory");
+	}
+	else {
+		this->metadata[_XPLATSTR("l_type")] = _XPLATSTR("regular");
+	}
 	this->properties = file.properties;
 	for (pos_t index = 0; index < file.blocklist.size();index++) {
 		utf8ostringstream ss;

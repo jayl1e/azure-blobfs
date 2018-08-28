@@ -15,13 +15,6 @@ namespace l_blob_adapter {
 		F_Directory
 	};
 
-	enum class GcLevel
-	{
-		GC_Clean,
-		GC_Dirty,
-		GC_Old
-	};
-
 
 	class Snapshot;
 	class BlockBlobUploadHelper;
@@ -34,19 +27,20 @@ namespace l_blob_adapter {
 		virtual ~BasicFile();
 
 		static unique_ptr<BasicFile> get(guid_t file_identifier, const azure::storage::cloud_blob_container& container);
-		static unique_ptr<BasicFile> create(guid_t file_identifier, const azure::storage::cloud_blob_container& container);
+		static unique_ptr<BasicFile> create(guid_t file_identifier, FileType type, const azure::storage::cloud_blob_container& container);
 
 		inline FileType type() { return this->m_type;};
 		inline bool exist() { return m_exist; };
 		unique_ptr<Snapshot> create_snap(); 
 
-	protected:
+	public:
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t read_bytes(const pos_t offset, const size_t size, uint8_t * buf);
 		size_t set_meta(const string_t& key, const string_t& val); //lock file
 		string_t get_meta(const string_t& key);
 		size_t resize(size_t size);//lock file
-
+		void inc_nlink();//lock file 
+		void dec_nlink();//lock file
 
 	protected:
 

@@ -115,6 +115,11 @@ pplx::task<int> l_blob_adapter::BlockBlobUploadHelper::generate_task(pos_t pos)
 			unique_ptr<Snapshot> snap = pfile->create_snap();
 			auto basefile = snap->basefile;
 			vector<concurrency::task<void>> tasks;
+
+			if (!pfile->exist()) {
+				basefile->m_pblob->delete_blob_if_exists();
+				return 0;
+			}
 			
 			for (pos_t i = 0; i < snap->blocklist.size() ; i++) {
 				if (snap->blocklist.at(i).mode() == azure::storage::block_list_item::uncommitted) {

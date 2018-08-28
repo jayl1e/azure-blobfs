@@ -29,17 +29,20 @@ int wmain(int argc, wchar_t *argv[]) {
 	auto azure_blob_container = blob_client.get_container_reference(L"mystoragecontainer");
 	
 
-	auto uid = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35388"));
-	auto pf = BasicFile::get(uid, azure_blob_container);
-
-	auto& cache = BlockCache::instance()->cache;
+	auto uid = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35389"));
+	//auto pf = BasicFile::create(uid,FileType::F_Directory, azure_blob_container);
 	
-	size_t readsize = 1<<22;
+	auto& cache = BlockCache::instance()->cache;
+	auto pf = BasicFile::get(uid, azure_blob_container);
+	pf->inc_nlink();
+	this_thread::sleep_for(2s);
+	size_t readsize = 1<<20;
 	uint8_t * buf = new uint8_t[readsize];
 	uint8_t towrite[] = "hello world how are you";
 	auto readcnts=pf->read_bytes(0, readsize, buf);
-	pf->write_bytes(0, sizeof(towrite), towrite);
-	pf->resize((1<<23) -1);
+	pf->write_bytes(1, sizeof(towrite), towrite);
+	pf->resize((1<<21) -1);
+	//pf->dec_nlink();
 	
 	Uploader::stop();
 	return 0;

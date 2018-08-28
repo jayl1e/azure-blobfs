@@ -22,5 +22,5 @@ int l_blob_adapter::CommonFile::azs_getattr(FUSE_STAT * stbuf)
 		stbuf->st_blocks = get_blockcnt();
 		stbuf->st_size = this->filesize;
 	}
-	
+	return 0;
 }
