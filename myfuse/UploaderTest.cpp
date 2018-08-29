@@ -4,12 +4,22 @@
 #include <chrono>
 #include <was/auth.h>
 #include <was/storage_account.h>
-#include "BasicFile.h"
+#include "File.h"
 #include "Uploader.h"
 
 using namespace std;
 using namespace l_blob_adapter;
 using namespace chrono_literals;
+
+azure::storage::cloud_blob_container azure_blob_container;
+
+
+struct HashFunction {
+	size_t operator () (const guid_t& uid)
+	{
+		return 0;
+	}
+};
 
 int wmain(int argc, wchar_t *argv[]) {
 
@@ -26,24 +36,41 @@ int wmain(int argc, wchar_t *argv[]) {
 	azure::storage::cloud_blob_client blob_client = storage_account.create_cloud_blob_client();
 
 	// Retrieve a reference to a previously created container.
-	auto azure_blob_container = blob_client.get_container_reference(L"mystoragecontainer");
+	azure_blob_container = blob_client.get_container_reference(L"mystoragecontainer");
 	
 
-	auto uid = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35389"));
+	auto uid = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35399"));
 	//auto pf = BasicFile::create(uid,FileType::F_Directory, azure_blob_container);
 	
 	auto& cache = BlockCache::instance()->cache;
-	auto pf = BasicFile::get(uid, azure_blob_container);
-	pf->inc_nlink();
-	this_thread::sleep_for(2s);
-	size_t readsize = 1<<20;
-	uint8_t * buf = new uint8_t[readsize];
-	uint8_t towrite[] = "hello world how are you";
-	auto readcnts=pf->read_bytes(0, readsize, buf);
-	pf->write_bytes(1, sizeof(towrite), towrite);
-	pf->resize((1<<21) -1);
-	//pf->dec_nlink();
 	
+	CommonFile* nf;
+	auto t = [&nf,uid]() {
+		auto uid2 = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35389"));
+		nf=FileMap::instance()->get(uid2);
+		auto rf = nf->to_dir();
+		guid_t cguid=rf->find(_XPLATSTR("testfile.txt"));
+		wcout << utility::uuid_to_string(cguid)<<endl;
+		//rf->addEntry(_XPLATSTR("testfile"), uid);
+		//this_thread::sleep_for(3s);
+		//rf->addEntry(_XPLATSTR("nfile"), uid);
+	};
+	thread t1(t);
+	/*auto pf = FileMap::instance()->get(uid);
+	if (pf->get_type() == FileType::F_Regular) {
+
+		auto reg = pf->to_reg();
+		size_t readsize = 1 << 20;
+		reg->trancate(5);
+		uint8_t * buf = new uint8_t[readsize];
+		uint8_t towrite[] = "new hello world how are you";
+		auto readcnts = reg->read(0, readsize, buf);
+		reg->write(3, sizeof(towrite), towrite);
+	}*/
+
+	
+	//pf->dec_nlink();
+	t1.join();
 	Uploader::stop();
 	return 0;
 }

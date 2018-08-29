@@ -26,7 +26,7 @@ unique_ptr<BasicFile> l_blob_adapter::BasicFile::get(guid_t file_identifier, con
 	ptr->blocksize = std::stoll(pblob->metadata()[_XPLATSTR("l_blocksize")]);
 	ptr->filesize = std::stoll(pblob->metadata()[_XPLATSTR("l_filesize")]);
 	ptr->nlink = std::stoll(pblob->metadata()[_XPLATSTR("l_nlink")]);
-	if (pblob->metadata()[_XPLATSTR("l_type")] == _XPLATSTR("dir")) {
+	if (pblob->metadata()[_XPLATSTR("l_type")] == _XPLATSTR("directory")) {
 		ptr->m_type = FileType::F_Directory;
 	}
 	else {
@@ -293,7 +293,7 @@ Block * l_blob_adapter::BasicFile::get_write_block_copy(const size_t blockindex)
 		pblock->basefile = this;
 		pblock->block_index = blockindex;
 		pblock->data.assign(buffer.collection().begin(), buffer.collection().end());
-		pblock->status = ItemStatus::Clean;
+		pblock->status = ItemStatus::Dirty;
 		this->blocklist.at(blockindex) = blockpos;
 		return pblock;
 	}

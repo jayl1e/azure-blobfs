@@ -41,10 +41,11 @@ namespace l_blob_adapter {
 		size_t resize(size_t size);//lock file
 		void inc_nlink();//lock file 
 		void dec_nlink();//lock file
-
-	protected:
-
+		int64_t get_nlink() { return this->nlink; }
 		size_t get_blockcnt() { return this->filesize ? (this->filesize - 1) / this->blocksize : 0; }
+		size_t get_blocksize() { return this->blocksize; }
+		size_t get_filesize() { return this->filesize; }
+	protected:
 
 		guid_t m_file_identifier;
 		unique_ptr<cloud_block_blob> m_pblob;

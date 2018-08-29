@@ -1,17 +1,26 @@
 #pragma once
 #include "BasicFile.h"
 #include <fuse.h>
+#include <errno.h>
+
+extern azure::storage::cloud_blob_container azure_blob_container;
 
 namespace l_blob_adapter {
 
 	class Directory;
+	class RegularFile;
 
-	class CommonFile :public BasicFile {
+	class CommonFile {
+	public:
+		unique_ptr<BasicFile> basicfile;
 		std::shared_mutex f_mutex;
-		unique_ptr<CommonFile> get(guid_t guid);
+		static unique_ptr<CommonFile> get(guid_t guid, const azure::storage::cloud_blob_container& container);
 		int azs_getattr(struct FUSE_STAT * stbuf);
-		Directory* to_dir();
-		Directory* to_reg();
+		bool exist() { return basicfile!=nullptr && basicfile->exist(); }
+
+		FileType get_type() { return basicfile->type(); }
+		Directory* to_dir() { return (Directory*)(this); };
+		RegularFile* to_reg() { return (RegularFile*)(this); };
 	};
 
 
@@ -23,10 +32,9 @@ namespace l_blob_adapter {
 	public:
 		int azs_readdir(void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *);
 		guid_t find(const string_t& name);
-		void addEntry(const string_t name, guid_t identifier);
+		bool addEntry(const string_t name, guid_t identifier);
 		void rmEntry(const string_t& name);
-		static unique_ptr<CommonFile> create(guid_t guid);
-
+		static unique_ptr<CommonFile> create(guid_t guid, const azure::storage::cloud_blob_container& container);
 	};
 
 	class RegularFile :public CommonFile {
@@ -34,13 +42,26 @@ namespace l_blob_adapter {
 		size_t write(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t read(const pos_t offset, const size_t size, uint8_t * buf);
 		size_t trancate(pos_t off);
-		static unique_ptr<RegularFile> create(guid_t guid);
+		static unique_ptr<RegularFile> create(guid_t guid, const azure::storage::cloud_blob_container& container);
+	};
+
+	struct GuidHasher {
+		size_t operator()(const guid_t& guid) const {
+			const uint64_t* half = reinterpret_cast<const uint64_t*>(&guid);
+			return half[0] ^ half[1];
+		}
 	};
 
 	class FileMap {
-		unordered_map<guid_t, unique_ptr<CommonFile> > filemap;
+		unordered_map<guid_t, unique_ptr<CommonFile>, GuidHasher> filemap;
+		std::mutex maplock;
+		static FileMap* m_instance;
+		static std::mutex instance_mutex;
 	public:
+		static FileMap* instance();
 		CommonFile * get(guid_t guid);
+		RegularFile* create_reg(guid_t guid);
+		Directory* create_dir(guid_t guid);
 	};
 }
 
