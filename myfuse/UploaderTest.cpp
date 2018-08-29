@@ -40,22 +40,26 @@ int wmain(int argc, wchar_t *argv[]) {
 	
 
 	auto uid = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35399"));
+	auto uid2 = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35389"));
+	auto uid3 = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35379"));
 	//auto pf = BasicFile::create(uid,FileType::F_Directory, azure_blob_container);
 	
 	auto& cache = BlockCache::instance()->cache;
 	
+
 	CommonFile* nf;
-	auto t = [&nf,uid]() {
-		auto uid2 = utility::string_to_uuid(_XPLATSTR("bf2c3ffc-f2e1-489f-b98f-35bbc3f35389"));
-		nf=FileMap::instance()->get(uid2);
-		auto rf = nf->to_dir();
-		guid_t cguid=rf->find(_XPLATSTR("testfile.txt"));
-		wcout << utility::uuid_to_string(cguid)<<endl;
-		//rf->addEntry(_XPLATSTR("testfile"), uid);
-		//this_thread::sleep_for(3s);
-		//rf->addEntry(_XPLATSTR("nfile"), uid);
-	};
-	thread t1(t);
+	//auto t = [&nf,uid,uid2,uid3]() {
+	//
+	//	nf=FileMap::instance()->create_dir(uid3);
+	//	auto rf = nf->to_dir();
+	//	/*guid_t cguid=rf->find(_XPLATSTR("testfile"));
+	//	wcout << utility::uuid_to_string(cguid)<<endl;
+	//	cout<<rf->rmEntry(_XPLATSTR("testfile"))<<endl;*/
+	//	rf->addEntry(_XPLATSTR("testdir"), uid2);
+	//	this_thread::sleep_for(3s);
+	//	rf->addEntry(_XPLATSTR("testfile"), uid);
+	//};
+	//thread t1(t);
 	/*auto pf = FileMap::instance()->get(uid);
 	if (pf->get_type() == FileType::F_Regular) {
 
@@ -68,9 +72,11 @@ int wmain(int argc, wchar_t *argv[]) {
 		reg->write(3, sizeof(towrite), towrite);
 	}*/
 
+	guid_t findid = parse_path_relative(L"testfile", uid3);
+	wcout << utility::uuid_to_string(findid) << endl;
 	
 	//pf->dec_nlink();
-	t1.join();
+	//t1.join();
 	Uploader::stop();
 	return 0;
 }

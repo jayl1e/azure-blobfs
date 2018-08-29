@@ -19,8 +19,8 @@ namespace l_blob_adapter {
 		bool exist() { return basicfile!=nullptr && basicfile->exist(); }
 
 		FileType get_type() { return basicfile->type(); }
-		Directory* to_dir() { return (Directory*)(this); };
-		RegularFile* to_reg() { return (RegularFile*)(this); };
+		Directory* to_dir() { if (basicfile->type() == FileType::F_Directory) return (Directory*)(this); else return nullptr; };
+		RegularFile* to_reg() { if (basicfile->type() == FileType::F_Regular) return (RegularFile*)(this); else return nullptr; };
 	};
 
 
@@ -33,7 +33,7 @@ namespace l_blob_adapter {
 		int azs_readdir(void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *);
 		guid_t find(const string_t& name);
 		bool addEntry(const string_t name, guid_t identifier);
-		void rmEntry(const string_t& name);
+		bool rmEntry(const string_t& name);
 		static unique_ptr<CommonFile> create(guid_t guid, const azure::storage::cloud_blob_container& container);
 	};
 
@@ -63,5 +63,7 @@ namespace l_blob_adapter {
 		RegularFile* create_reg(guid_t guid);
 		Directory* create_dir(guid_t guid);
 	};
+
+	guid_t parse_path_relative(string_t path, guid_t base);
 }
 
