@@ -1,12 +1,13 @@
-﻿#include <was/storage_account.h>
+#include <was/storage_account.h>
 #include <was/blob.h>
 #include <cpprest/filestream.h>  
 #include <cpprest/containerstream.h>
-#include "blobfuse.h"
 #include <string>
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include "BlobAdapter.h"
+
 
 struct Str_options str_options = {};
 int file_cache_timeout_in_seconds = 30;
@@ -14,6 +15,38 @@ int default_permission = 0;
 struct fuse_operations azs_fuse_operations = {};
 using std::wstring;
 using std::string;
+using namespace l_blob_adapter;
+
+guid_t rootdir;
+
+CommonFile * parse_path(const std::string& path)
+{
+	guid_t t = parse_path_relative(utility::conversions::to_string_t(path), rootdir);
+	if (t == guid_t()) {
+		return nullptr;
+	}
+	else {
+		return FileMap::instance()->get(t);
+	}
+}
+
+CommonFile * parse_path(const l_blob_adapter::string_t& path)
+{
+	guid_t t = parse_path_relative(path, rootdir);
+	if (t == guid_t()) {
+		return nullptr;
+	}
+	else {
+		return FileMap::instance()->get(t);
+	}
+}
+
+void split_path(std::string path, string_t& parentname, string_t& shortname) {
+	if (path.back() == '/')path.pop_back();
+	size_t pos = path.find_last_of('/');
+	parentname = utility::conversions::to_string_t(path.substr(0, pos));
+	shortname = utility::conversions::to_string_t(path.substr(pos + 1));
+}
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
 struct Options
@@ -47,7 +80,7 @@ const struct fuse_opt option_spec[] =
 };
 
 std::shared_ptr<azure::storage::cloud_blob_container> azure_blob_container;
-static unordered_map<wstring, BlobProxy*> file_map;
+
 
 const std::string log_ident = "blobfuse";
 
@@ -193,7 +226,7 @@ int set_log_mask(const char * min_log_level_char)
 {
 	if (!min_log_level_char)
 	{
-		setlogmask(LOG_UPTO(LOG_INFO));
+		setlogmask(LOG_UPTO(LOG_DEBUG));
 		return 0;
 	}
 	std::string min_log_level(min_log_level_char);
@@ -371,7 +404,7 @@ int validate_storage_connection()
 
 		// Retrieve a reference to a previously created container.
 		auto azure_blob_container = blob_client.get_container_reference(string2wstring("mystoragecontainer"));
-		auto blob=azure_blob_container.get_block_blob_reference(L"sample.mp4");
+		auto blob = azure_blob_container.get_block_blob_reference(L"sample.mp4");
 		vector<uint8_t> rawdata;
 		rawdata.resize(0);
 		concurrency::streams::istream fis;
@@ -389,13 +422,13 @@ int validate_storage_connection()
 				std::rethrow_exception(ptr);
 			}
 			catch (azure::storage::storage_exception& e) {
-				cerr << e.retryable()<< e.what();
+				std::cerr << e.retryable() << e.what();
 				throw e;
 			}
-			
+
 		}
 
-		
+
 	}
 	return 0;
 }
@@ -403,7 +436,7 @@ int validate_storage_connection()
 void configure_fuse(struct fuse_args *args)
 {
 	fuse_opt_add_arg(args, "-omax_read=131072");
-	
+
 	fuse_opt_add_arg(args, "-f");
 
 	if (options.file_cache_timeout_in_seconds != NULL)
@@ -415,22 +448,22 @@ void configure_fuse(struct fuse_args *args)
 	{
 		file_cache_timeout_in_seconds = 120;
 	}
+	fuse_opt_add_arg(args, "-s");//disable multithread
 	fuse_opt_add_arg(args, "-ovolname=DDD");
 	fuse_opt_add_arg(args, "-odefault_permissions");
 	// FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
 	// This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
 	fuse_opt_add_arg(args, "-ohard_remove");
 	fuse_opt_add_arg(args, "-obig_writes");
-	fuse_opt_add_arg(args, "-ofsname=azureblobfuse");
+	fuse_opt_add_arg(args, "-ofsname=azureblobfs");
 	fuse_opt_add_arg(args, "-okernel_cache");
 }
-
 
 
 void *azs_init(struct fuse_conn_info * conn)
 {
 	// Retrieve storage account from connection string.
-
+	AZS_DEBUGLOGV("azs_init called");
 	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 	storage_connection_string += U(";AccountName=");
 	storage_connection_string += string2wstring(str_options.accountName);
@@ -444,6 +477,26 @@ void *azs_init(struct fuse_conn_info * conn)
 
 	// Retrieve a reference to a previously created container.
 	azure_blob_container = std::make_shared<azure::storage::cloud_blob_container>(blob_client.get_container_reference(string2wstring(str_options.containerName)));
+	
+	Uploader::run();
+	
+	azure_blob_container->download_attributes();
+	auto& containermeta = azure_blob_container->metadata();
+	auto iter = containermeta.find(L"rootdir");
+	auto iter2 = containermeta.find(L"blocksize");
+	if (iter == containermeta.end()|| iter2 == containermeta.end() || std::stoll(iter2->second) != default_block_size) {
+		guid_t uid = utility::new_uuid();
+		Directory* dir = FileMap::instance()->create_dir(uid);
+		dir->addEntry(_XPLATSTR("."), uid);
+		dir->addEntry(_XPLATSTR(".."), uid);
+		containermeta[L"rootdir"] = utility::uuid_to_string(uid);
+		containermeta[L"blocksize"] = my_to_string(default_block_size);
+		azure_blob_container->upload_metadata();
+		rootdir = uid;
+	}
+	else {
+		rootdir = utility::string_to_uuid(iter->second);
+	}
 
 	/*
 	cfg->attr_timeout = 360;
@@ -470,15 +523,15 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 	std::string pathString(path);
 
 	struct FUSE_STAT statbuf;
-	stbuf->f_bsize = 8;
+	stbuf->f_bsize = l_blob_adapter::default_block_size/512;
 	stbuf->f_blocks = 1000000000000;
 	stbuf->f_bfree = 100000000000;
 	stbuf->f_bavail = 100000000000;
-	//int getattrret = azs_getattr(path, &statbuf);
-	//if (getattrret != 0)
-	//{
-	//	return getattrret;
-	//}
+	int getattrret = azs_getattr(path, &statbuf);
+	if (getattrret != 0)
+	{
+		return getattrret;
+	}
 
 	//// return tmp path stats
 	//errno = 0;
@@ -490,375 +543,123 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 }
 
 
-bool is_directory_blob(const azure::storage::cloud_blob & blob)
-{
-	const auto meta = blob.metadata();
-	auto iter = meta.find(U("is_dir"));
-	if ( iter!= meta.end() && iter->second==U("true")) {
-		return true;
-	}
-	return false;
-}
-
-
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	syslog(LOG_NOTICE, "azs_getattr called with path = %s", path);
-
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
+	AZS_DEBUGLOGV("getattr called with path = %s\n", path);
+	CommonFile * t = parse_path(path);
+	if (t == nullptr) {
 		errno = ENOENT;
 		return -1;
 	}
-
-	if (name.empty()) {
-		//name is rootdir
-		stbuf->st_mode = S_IFDIR | default_permission;
-		// If st_nlink = 2, means direcotry is empty.
-		// Directory size will affect behaviour for mv, rmdir, cp etc.
-		stbuf->st_uid = fuse_get_context()->uid;
-		stbuf->st_gid = fuse_get_context()->gid;
-		stbuf->st_nlink = 3;
-		stbuf->st_size = 0;
-		return 0;
-	}
 	else {
-		//name is regular file or directory
-
-		auto iter = file_map.find(name);
-		if (iter != file_map.end()) {
-			iter->second->getattr(stbuf);
-			syslog(LOG_NOTICE, "getattr cached file proxy : %lld", iter->second);
-			return 0;
-		}
-
-		azure::storage::cloud_blob blob = azure_blob_container->get_blob_reference(name);
-		if (!blob.is_valid() || !blob.exists()) {
-			errno = ENOENT;
-			return -1;
-		}
-		if (!is_directory_blob(blob)) {
-			file_map[name]= BlobProxy::access(name);
-			file_map[name]->getattr(stbuf);
-			return 0;
-		}
-		else {
-			stbuf->st_mode = S_IFDIR | default_permission; // dir
-			stbuf->st_uid = fuse_get_context()->uid;
-			stbuf->st_gid = fuse_get_context()->gid;
-			stbuf->st_nlink = 3;
-			stbuf->st_size = 0;
-			syslog(LOG_NOTICE, "stat sucess: directory file\n");
-			return 0;
-		}
+		return t->azs_getattr(stbuf);
 	}
 }
 
-wstring map_to_blob_path(const char *path) throw (std::exception){
-	if (!path[0]) {
-		throw std::exception("bad path");
-	}
-	wstring tmp;
-	if (path[0] == '/') {
-		tmp= string2wstring(path + 1);
-	}
-	else {
-		wstring tmp= string2wstring(path);
-	}
-	
-	//to lower case to camatible with docker windows
-	for (wchar_t& t : tmp) {
-		if (t >= L'A'&&t <= L'Z')t = t + L'a' - L'A';
-	}
-	return tmp;
-
-}
 
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *)
 {
 	AZS_DEBUGLOGV("azs_readdir called with path = %s\n", path);
-	wstring dirname;
-	try {
-		dirname = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
+	Directory* t = parse_path(path)->to_dir();
+	if (t == nullptr) {
 		errno = ENOENT;
 		return -1;
 	}
-	
-	azure::storage::list_blob_item_iterator end_iter;
-	int is_buf_full = 0;
-	struct FUSE_STAT statbuf = {};
-	statbuf.st_mode = S_IFDIR | default_permission;
-	statbuf.st_uid = fuse_get_context()->uid;
-	statbuf.st_gid = fuse_get_context()->gid;
-	statbuf.st_nlink = 3;
-	statbuf.st_size = 0;
-	filler(buf, ".", &statbuf, 0);
-	filler(buf, "..", &statbuf, 0);
-
-	//if it is the root dir
-	if (dirname.empty()) {
-		for (auto it = azure_blob_container->list_blobs(); it != end_iter; ++it) {
-			if (it->is_blob()) {
-				auto blobref = it->as_blob();
-				is_buf_full = filler(buf, wstring2string(blobref.name()).c_str(), NULL, 0);
-			}
-			if (is_buf_full)return is_buf_full;
-		}
-		return 0;
+	else {
+		return t->azs_readdir(buf, filler);
 	}
-
-	//if it is common dir
-	auto dirref=azure_blob_container->get_directory_reference(dirname);
-	auto blobref = azure_blob_container->get_blob_reference(dirname);
-	if (!dirref.is_valid()||!blobref.exists()||!is_directory_blob(blobref)) {
-		errno = ENOENT;
-		return -1;
-	}
-	wstring prefix = dirref.prefix();
-	
-	for (auto it = dirref.list_blobs(); it != end_iter; ++it) {
-		if(it->is_blob()) {
-			auto blobref = it->as_blob();
-			filler(buf, wstring2string(blobref.name().substr(prefix.length())).c_str(), NULL, 0);
-		}
-		if (is_buf_full)return is_buf_full;
-	}
-	return 0;
 }
 
 
-static int azs_open_stub(const char *path, struct fuse_file_info *fi)
+static int azs_open(const char *path, struct fuse_file_info *fi)
 {
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
+	AZS_DEBUGLOGV("azs_open called with path = %s\n", path);
+
+	CommonFile * file = parse_path(path);
+	if (file == nullptr) {
 		errno = ENOENT;
 		return -1;
 	}
-
-	fi->direct_io = 1;
-
-	auto iter = file_map.find(name);
-	if (iter != file_map.end()) {
-		fi->fh = reinterpret_cast<int64_t>(iter->second);
-		syslog(LOG_NOTICE, "open cached file proxy:%s, fh:%lld", path, fi->fh);
-		return 0;
+	if (file->get_type()==FileType::F_Directory) {
+		errno = EISDIR;
+		return -1;
 	}
-	else {
-		fi->fh = reinterpret_cast<int64_t>(BlobProxy::access(name));
-		if (fi->fh) {
-			file_map[name] = reinterpret_cast<BlobProxy*>(fi->fh);
-			syslog(LOG_NOTICE, "flush cache file proxy : %lld", fi->fh);
-		}
-	}
-	syslog(LOG_NOTICE, "open path %s, handle %llu, flags %x", path, fi->fh,fi->flags);
-	
+	fhwraper* fh = new fhwraper(file);
+	fh->flag = fi->flags & 0x3;
+	fi->fh = (uint64_t)fh;
 	return 0;
 }
 
 static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
 {
-	syslog(LOG_DEBUG,"azs_read called with path = %s\n, size=%llu, offset=%llu", path,size,offset);
-
-	if (fi->fh) {
-		auto proxy = reinterpret_cast<BlobProxy *>(fi->fh);
-		return proxy->read(buf, size, offset, fi);
-	}
-
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
-		errno = ENOENT;
+	AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+	fhwraper *fh = (fhwraper *)(fi->fh);
+	CommonFile *file = fh->file;
+	auto f = file->to_reg();
+	if (fh->flag & 0x1 || !f) {
+		errno = EBADF;
 		return -1;
 	}
-
-	auto blob = azure_blob_container->get_blob_reference(name);
-	concurrency::streams::container_buffer<std::vector<uint8_t>> buffer;
-	concurrency::streams::ostream output_stream(buffer);
-	if (!blob.exists()) {
-		errno = ENOENT;
-		return -1;
-	}
-		
-	if (is_directory_blob(blob)) {
-		errno = EISDIR;
-		return -1;
-	}
-	try {
-		blob.download_range_to_stream(output_stream, offset, size);
-	}
-	catch (std::exception &e) {
-		//syslog(LOG_EMERG, e.what());
-		/*size_t fake_taken = blob.properties().size();
-		fake_taken = (fake_taken / 512 + ((fake_taken % 512) ? 1 : 0)) * 512;
-		memset(buf, 0, size);
-		if (offset + size >= fake_taken) {
-			return (fake_taken - offset)>0?fake_taken-offset:0;
-		}*/
-		if(size)buf[0] = 0;
-		return 0;
-	}
-	const auto& contain = buffer.collection();
-	for (int i = 0; i < contain.size(); i++) {
-		buf[i] = contain[i];
-	}
-	return contain.size();
+	return f->read(offset, size, (uint8_t*)buf);
 }
 
 static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info *fi) {
-	syslog(LOG_EMERG,"write called with path = %s, size %d, offset %d\n", path,(int)size,(int)offset);
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
-		errno = ENOENT;
+	AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+	fhwraper *fh = (fhwraper *)(fi->fh);
+	CommonFile *file = fh->file;
+	auto f = file->to_reg();
+	if (!(fh->flag & 0x3)||!f) {
+		errno = EBADF;
 		return -1;
 	}
-
-	auto blob = azure_blob_container->get_block_blob_reference(name);
-	concurrency::streams::container_buffer<std::vector<uint8_t>> buffer;
-	concurrency::streams::ostream output_stream(buffer);
-	if (!blob.exists()) {
-		errno = ENOENT;
-		return -1;
-	}
-
-	if (is_directory_blob(blob)) {
-		errno = EISDIR;
-		return -1;
-	}
-
-	try {
-		blob.download_to_stream(output_stream);
-	}
-	catch (std::exception & e) {
-		//syslog(LOG_ALERT, e.what());
-		errno = EIO;
-		return -1;
-	}
-	auto& contain = buffer.collection();
-	if (offset + size > contain.size()) {
-		contain.resize(offset + size);
-	}
-	
-	for (int i = 0; i < size; i++) {
-		contain[offset + i] = buf[i];
-	}
-	concurrency::streams::container_buffer<std::vector<uint8_t>> ibuffer(contain);
-	concurrency::streams::istream istream(ibuffer);
-	blob.upload_from_stream(istream);
-	auto iter = file_map.find(name);
-	if (iter != file_map.end()) {
-		if(iter->second)delete iter->second;
-		file_map.erase(iter);
-	}
-	fi->fh = 0;
-	
-	return size;
+	return f->write(offset, size, (uint8_t*)buf);
 }
 
 
 
 int azs_truncate(const char * path, FUSE_OFF_T offset) {
-	syslog(LOG_EMERG, "---truncate called with path = %s, offset %d", path, (int)offset);
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
-		errno = ENOENT;
-		return -1;
-	}
-
-	auto blob = azure_blob_container->get_block_blob_reference(name);
-	concurrency::streams::container_buffer<std::vector<uint8_t>> buffer;
-	concurrency::streams::ostream output_stream(buffer);
-	if (!blob.exists()) {
-		errno = ENOENT;
-		return -1;
-	}
-
-	if (is_directory_blob(blob)) {
-		errno = EISDIR;
-		return -1;
-	}
-	try {
-		blob.download_to_stream(output_stream);
-	}
-	catch (std::exception & e) {
-		//syslog(LOG_ALERT, e.what());
-		errno = EIO;
-		return -1;
-	}
-	auto& contain = buffer.collection();
-	contain.resize(offset);
-	concurrency::streams::container_buffer<std::vector<uint8_t>> ibuffer(contain);
-	concurrency::streams::istream istream(ibuffer);
-	blob.upload_from_stream(istream);
-	auto iter = file_map.find(name);
-	if (iter != file_map.end()) {
-		if (iter->second)delete iter->second;
-		file_map.erase(iter);
-	}
+	AZS_DEBUGLOGV("azs_truncate called with path = %s\n", path);
 	return 0;
 }
 
 int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *fi) {
-	syslog(LOG_EMERG, "---ftruncate: fh %lld , offset %lld", fi->fh,offset);
-	fi->fh = 0;
-	return azs_truncate(path, offset);
+	AZS_DEBUGLOGV("azs_ftruncate called with path = %s\n", path);
+	fhwraper *fh = (fhwraper *)(fi->fh);
+	CommonFile *file = fh->file;
+	auto f = file->to_reg();
+	if (!(fh->flag & 0x3) || !f) {
+		errno = EBADF;
+		return -1;
+	}
+	f->trancate(offset);
+	return 0;
 }
 
 int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
-	syslog(LOG_EMERG, "create %s", path);
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
-		errno = ENOENT;
-		return -1;
-	}
-	auto blob = azure_blob_container->get_blob_reference(name);
-	if (blob.exists()) {
-		errno = EEXIST;
-		return -1;
-	}
-	wstring parent = blob.get_parent_reference().prefix();
-	parent.erase(parent.length() - 1, 1);
+	AZS_DEBUGLOGV("azs_create called with path = %s\n", path);
 	
-
-	if (parent.length()) {
-		auto parent_blob = azure_blob_container->get_blob_reference(parent);
-		if (!parent_blob.exists() || !is_directory_blob(parent_blob)) {
-			errno = ENOENT;
-			return -1;
-		}
+	string_t sparent;
+	string_t shortname;
+	split_path(path, sparent, shortname);
+	Directory* parent = parse_path(sparent)->to_dir();
+	if (parent == nullptr) {
+		errno = EACCES;
+		return -1;
 	}
-	auto blockblob = azure_blob_container->get_block_blob_reference(name);
-	blockblob.open_write().close();
+	guid_t uid= parent->create_reg(shortname);
+	if (uid == guid_t()) {
+		return -1;
+	}
+	CommonFile* file = FileMap::instance()->get(uid);
+	fhwraper* fh = new fhwraper(file);
+	fh->flag = fi->flags & 0x3;
+	fi->fh = (uint64_t)fh;
 	return 0;
 }
 
 int azs_release_stub(const char *path, struct fuse_file_info * fi) {
-	syslog(LOG_NOTICE, "release, path %s, handle %llu, flags %x", path, fi->fh, fi->flags);
+
+	delete (fhwraper*)fi->fh;
 	return 0;
 }
 
@@ -867,67 +668,73 @@ int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_i
 }
 
 int azs_mkdir_stub(const char *path, mode_t) {
-	syslog(LOG_NOTICE, "mkdir %s", path);
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
-		errno = ENOENT;
+	AZS_DEBUGLOGV("azs_mkdir called with path = %s\n", path);
+	
+	string_t sparent ;
+	string_t shortname ;
+	Directory* parent = parse_path(sparent)->to_dir();
+	if (parent == nullptr) {
+		errno = EACCES;
 		return -1;
 	}
-	auto blob = azure_blob_container->get_blob_reference(name);
-	if (blob.exists()) {
-		errno = EEXIST;
+	guid_t uid = parent->create_dir(shortname);
+	if (uid == guid_t()) {
 		return -1;
 	}
-	wstring parent = blob.get_parent_reference().prefix();
-	if(parent.length() && parent.back()==L'/')parent.pop_back();
-
-
-	if (parent.length()) {
-		auto parent_blob = azure_blob_container->get_blob_reference(parent);
-		if (!parent_blob.exists() || !is_directory_blob(parent_blob)) {
-			errno = ENOENT;
-			return -1;
-		}
-	}
-	auto blockblob = azure_blob_container->get_block_blob_reference(name);
-	blockblob.upload_text(L"");
-	auto& metadata = blockblob.metadata();
-	metadata[L"is_dir"] = L"true";
-	blockblob.upload_metadata();
 	return 0;
 }
 
 int azs_unlink_stub(const char *path) {
-	syslog(LOG_NOTICE, "rm %s", path);
-	wstring name;
-	try {
-		name = map_to_blob_path(path);
-	}
-	catch (const std::exception& e) {
-		syslog(LOG_ALERT, e.what());
+	AZS_DEBUGLOGV("azs_unlink called with path = %s\n", path);
+	
+	string_t sparent;
+	string_t shortname;
+	split_path(path, sparent, shortname);
+	Directory* parent = parse_path(sparent)->to_dir();
+	/*RegularFile * file = parse_path(path)->to_reg();
+	if (file == nullptr) {
 		errno = ENOENT;
 		return -1;
-	}
-	auto blob = azure_blob_container->get_blob_reference(name);
-	try {
-		blob.delete_blob();
-	}
-	catch (azure::storage::storage_exception& e) {
-		syslog(LOG_EMERG, "azure exception: %s", e.what());
-		errno = ENOENT;
+	}*/
+	if (parent == nullptr) {
+		errno = EACCES;
 		return -1;
 	}
-	catch (exception& e) {
-		syslog(LOG_EMERG, "exception: %s", e.what());
+	bool sucess = parent->rmEntry(shortname);
+	if (!sucess) {
+		errno = ENOENT;
+		return -1;
 	}
 	return 0;
 }
 
 int azs_rmdir_stub(const char *path) {
+	AZS_DEBUGLOGV("azs_unlink called with path = %s\n", path);
+	string_t sparent;
+	string_t shortname;
+	split_path(path, sparent, shortname);
+	Directory* parent = parse_path(sparent)->to_dir();
+	Directory * file = parse_path(path)->to_dir();
+	if (parent == nullptr) {
+		errno = EACCES;
+		return -1;
+	}
+	if (file == nullptr) {
+		errno = ENOENT;
+		return -1;
+	}
+	if (file->entry_cnt() > 2) {
+		errno = ENOTEMPTY;
+		return -1;
+	}
+	file->rmEntry(_XPLATSTR(".."));
+	file->rmEntry(_XPLATSTR("."));
+
+	bool sucess = parent->rmEntry(shortname);
+	if (!sucess) {
+		errno = ENOENT;
+		return -1;
+	}
 	return 0;
 }
 
@@ -951,12 +758,45 @@ int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
 
 void azs_destroy(void * /*private_data*/)
 {
-	syslog(LOG_NOTICE,"azs_destroy called.\n");
+	AZS_DEBUGLOGV("azs_destroy called\n");
+	Uploader::stop();
 }
 
 
 
 int azs_rename(const char *src, const char *dst) {
+	AZS_DEBUGLOGV("azs_rename called with src = %s : dst= %s \n", src,dst);
+	
+	string_t sparent;
+	string_t shortname;
+	split_path(src, sparent, shortname);
+	Directory* parent = parse_path(sparent)->to_dir();
+	
+	
+	string_t dsparent;
+	string_t dshortname;
+	split_path(src, dsparent, dshortname);
+	Directory* dparent = parse_path(dsparent)->to_dir();
+
+	if (!(parent&&dparent)) {
+		errno = EACCES;
+		return -1;
+	}
+
+	guid_t uid = parent->find( shortname );
+	guid_t otheruid = dparent->find(dshortname);
+
+	if (uid == guid_t()) {
+		errno = ENOENT;
+		return -1;
+	}
+	if (otheruid != guid_t()) {
+		errno = EEXIST;
+		return -1;
+	}
+	
+	dparent->addEntry(dshortname, uid);
+	parent->rmEntry(shortname);
 	return 0;
 }
 
@@ -988,8 +828,8 @@ void set_up_callbacks() {
 	azs_fuse_operations.readdir = azs_readdir;
 	azs_fuse_operations.read = azs_read;
 	azs_fuse_operations.write = azs_write;
-	azs_fuse_operations.open = azs_open_stub;
-	azs_fuse_operations.create= azs_create_stub;
+	azs_fuse_operations.open = azs_open;
+	azs_fuse_operations.create = azs_create_stub;
 	azs_fuse_operations.release = azs_release_stub;
 	azs_fuse_operations.fsync = azs_fsync_stub;
 	azs_fuse_operations.mkdir = azs_mkdir_stub;

@@ -20,7 +20,7 @@ namespace l_blob_adapter {
 	class BlockBlobUploadHelper;
 	
 
-	class BasicFile:public std::enable_shared_from_this<BasicFile>
+	class BasicFile
 	{
 	public:
 		BasicFile();
@@ -34,6 +34,7 @@ namespace l_blob_adapter {
 		unique_ptr<Snapshot> create_snap(); 
 
 	public:
+		guid_t get_id() { return m_file_identifier; }
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t read_bytes(const pos_t offset, const size_t size, uint8_t * buf);
 		size_t set_meta(const string_t& key, const string_t& val); //lock file

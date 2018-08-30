@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BasicFile.cpp" />
+    <ClCompile Include="BlobAdapter.cpp" />
     <ClCompile Include="blobfuse.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -29,21 +30,24 @@
     <ClCompile Include="Cache.cpp" />
     <ClCompile Include="File.cpp" />
     <ClCompile Include="hello.cpp" />
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="myutils.cpp" />
+    <ClCompile Include="Uploader.cpp" />
+    <ClCompile Include="UploaderTest.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="myBlobAdapter.cpp" />
-    <ClCompile Include="myutils.cpp" />
-    <ClCompile Include="Uploader.cpp" />
-    <ClCompile Include="UploaderTest.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BasicFile.h" />
-    <ClInclude Include="blobfuse.h" />
+    <ClInclude Include="BlobAdapter.h" />
+    <ClInclude Include="blobfuse.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="BlobProxy.h" />
     <ClInclude Include="Block.h" />
     <ClInclude Include="Cache.h" />

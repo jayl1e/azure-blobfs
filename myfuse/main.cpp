@@ -5,7 +5,7 @@
 #include <cpprest/producerconsumerstream.h>
 #include <codecvt>
 
-#include "blobfuse.h"
+#include "BlobAdapter.h"
 
 using std::wstring;
 using std::string;
@@ -22,8 +22,6 @@ extern struct fuse_operations azs_fuse_operations;
 using namespace concurrency;
 
 int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
-	utility::uuid f = utility::new_uuid();
-	wcout << utility::uuid_to_string(f)<<endl;
 
 	char ** cargv = new char*[argc];
 
@@ -40,11 +38,11 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
 		return ret;
 	}
 
-	ret = validate_storage_connection();
-	if (ret != 0)
-	{
-		return ret;
-	}
+	//ret = validate_storage_connection();
+	//if (ret != 0)
+	//{
+	//	return ret;
+	//}
 
 	configure_fuse(&args);
 

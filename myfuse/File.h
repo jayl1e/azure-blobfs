@@ -3,7 +3,7 @@
 #include <fuse.h>
 #include <errno.h>
 
-extern azure::storage::cloud_blob_container azure_blob_container;
+extern std::shared_ptr<azure::storage::cloud_blob_container> azure_blob_container;
 
 namespace l_blob_adapter {
 
@@ -18,9 +18,12 @@ namespace l_blob_adapter {
 		int azs_getattr(struct FUSE_STAT * stbuf);
 		bool exist() { return basicfile!=nullptr && basicfile->exist(); }
 
+		guid_t get_id() { return basicfile->get_id(); }
 		FileType get_type() { return basicfile->type(); }
-		Directory* to_dir() { if (basicfile->type() == FileType::F_Directory) return (Directory*)(this); else return nullptr; };
-		RegularFile* to_reg() { if (basicfile->type() == FileType::F_Regular) return (RegularFile*)(this); else return nullptr; };
+		Directory* to_dir() { if (this && basicfile->type() == FileType::F_Directory) return (Directory*)(this); else return nullptr; };
+		RegularFile* to_reg() { if (this && basicfile->type() == FileType::F_Regular) return (RegularFile*)(this); else return nullptr; };
+	protected:
+		std::shared_mutex inner_f_mutex;
 	};
 
 
@@ -30,11 +33,19 @@ namespace l_blob_adapter {
 	};
 	class Directory :public CommonFile {
 	public:
-		int azs_readdir(void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *);
+		int azs_readdir(void *buf, fuse_fill_dir_t filler);
+
+		guid_t create_dir(const string_t& name);
+		guid_t create_reg(const string_t& name);
+
 		guid_t find(const string_t& name);
 		bool addEntry(const string_t name, guid_t identifier);
 		bool rmEntry(const string_t& name);
 		static unique_ptr<CommonFile> create(guid_t guid, const azure::storage::cloud_blob_container& container);
+		size_t entry_cnt() { return this->basicfile->get_filesize() / sizeof(DirEntry);}
+	protected:
+		bool addEntry_nolock(const DirEntry& entry);
+		guid_t find_nolock(const string_t& name);
 	};
 
 	class RegularFile :public CommonFile {
@@ -63,7 +74,7 @@ namespace l_blob_adapter {
 		RegularFile* create_reg(guid_t guid);
 		Directory* create_dir(guid_t guid);
 	};
-
-	guid_t parse_path_relative(string_t path, guid_t base);
+	guid_t parse_path_relative(const string_t& path, guid_t base);
+	
 }
 

@@ -79,13 +79,13 @@ unique_ptr<RegularFile> l_blob_adapter::RegularFile::create(guid_t guid, const a
 	return ret;
 }
 
-int l_blob_adapter::Directory::azs_readdir(void * buf, fuse_fill_dir_t filler, FUSE_OFF_T, fuse_file_info *)
+int l_blob_adapter::Directory::azs_readdir(void * buf, fuse_fill_dir_t filler)
 {
-	std::shared_lock lock(this->f_mutex);
+	std::shared_lock lock(this->inner_f_mutex);
 	pos_t offset = basicfile->get_filesize();
 	DirEntry entry;
 	int is_buf_full = 0;
-	for (pos_t i = 0; i < offset / sizeof(DirEntry); i += sizeof(DirEntry)) {
+	for (pos_t i = 0; i < offset; i += sizeof(DirEntry)) {
 		basicfile->read_bytes(i, sizeof(DirEntry), (uint8_t *)(&entry));
 		is_buf_full=filler(buf, utility::conversions::to_utf8string(entry.name).c_str(), nullptr, 0);
 		if (is_buf_full)return is_buf_full;
@@ -93,18 +93,44 @@ int l_blob_adapter::Directory::azs_readdir(void * buf, fuse_fill_dir_t filler, F
 	return 0;
 }
 
+guid_t l_blob_adapter::Directory::create_dir(const string_t & name)
+{
+	std::unique_lock lock(this->inner_f_mutex);
+	if (find_nolock(name) != guid_t()) {
+		errno = EEXIST;
+		return guid_t();
+	}
+	guid_t uid = utility::new_uuid();
+	Directory * pf = FileMap::instance()->create_dir(uid);
+	pf->addEntry(_XPLATSTR("."), uid);
+	pf->addEntry(_XPLATSTR(".."), this->get_id());
+	DirEntry entry;
+	wcscpy_s(entry.name, name.c_str());
+	entry.identifier = uid;
+	addEntry_nolock(entry);
+	return uid;
+}
+
+guid_t l_blob_adapter::Directory::create_reg(const string_t & name)
+{
+	std::unique_lock lock(this->inner_f_mutex);
+	if (find_nolock(name) != guid_t()) {
+		errno = EEXIST;
+		return guid_t();
+	}
+	guid_t uid = utility::new_uuid();
+	RegularFile * pf = FileMap::instance()->create_reg(uid);
+	DirEntry entry;
+	wcscpy_s(entry.name, name.c_str());
+	entry.identifier = uid;
+	addEntry_nolock(entry);
+	return uid;
+}
+
 guid_t l_blob_adapter::Directory::find(const string_t & name)
 {
-	std::shared_lock lock(this->f_mutex);
-	pos_t offset = basicfile->get_filesize();
-	DirEntry tentry;
-	for (pos_t i = 0; i < offset; i += sizeof(DirEntry)) {
-		basicfile->read_bytes(i, sizeof(DirEntry), (uint8_t *)(&tentry));
-		if (wcscmp(name.c_str(), tentry.name) == 0) {
-			return tentry.identifier;
-		}
-	}
-	return guid_t();
+	std::shared_lock lock(this->inner_f_mutex);
+	return find_nolock(name);
 }
 
 bool l_blob_adapter::Directory::addEntry(const string_t name, guid_t identifier)
@@ -112,23 +138,17 @@ bool l_blob_adapter::Directory::addEntry(const string_t name, guid_t identifier)
 	DirEntry entry;
 	wcscpy_s(entry.name, name.c_str());
 	entry.identifier = identifier;
-	std::unique_lock lock(this->f_mutex);
-	pos_t offset = basicfile->get_filesize();
-	DirEntry tentry;
-	for (pos_t  i = 0; i < offset;i+=sizeof(DirEntry)) {
-		basicfile->read_bytes(i, sizeof(DirEntry), (uint8_t *)(&tentry));
-		if (wcscmp(name.c_str(), tentry.name) == 0) {
-			return false;
-		}
+	std::unique_lock lock(this->inner_f_mutex);
+	if (find_nolock(name) != guid_t()) {
+		return false;
 	}
-	FileMap::instance()->get(identifier)->basicfile->inc_nlink();
-	basicfile->write_bytes(offset, sizeof(DirEntry), (uint8_t*)(&entry));
-	return true;
+	return addEntry_nolock(entry);
 }
+
 
 bool l_blob_adapter::Directory::rmEntry(const string_t & name)
 {
-	std::unique_lock lock(this->f_mutex);
+	std::unique_lock lock(this->inner_f_mutex);
 	pos_t offset = basicfile->get_filesize();
 	DirEntry entry;
 	for (pos_t i = 0; i < offset; i += sizeof(DirEntry)) {
@@ -159,6 +179,28 @@ unique_ptr<CommonFile> l_blob_adapter::Directory::create(guid_t guid, const azur
 	return ret;
 }
 
+bool l_blob_adapter::Directory::addEntry_nolock(const DirEntry & entry)
+{
+	pos_t offset = basicfile->get_filesize();
+	FileMap::instance()->get(entry.identifier)->basicfile->inc_nlink();
+	basicfile->write_bytes(offset, sizeof(DirEntry), (uint8_t*)(&entry));
+	return true;
+}
+
+guid_t l_blob_adapter::Directory::find_nolock(const string_t & name)
+{
+	pos_t offset = basicfile->get_filesize();
+	DirEntry tentry;
+	for (pos_t i = 0; i < offset; i += sizeof(DirEntry)) {
+		basicfile->read_bytes(i, sizeof(DirEntry), (uint8_t *)(&tentry));
+		if (wcscmp(name.c_str(), tentry.name) == 0) {
+			return tentry.identifier;
+		}
+	}
+	return guid_t();
+}
+
+
 
 FileMap*  l_blob_adapter::FileMap::m_instance;
 std::mutex  l_blob_adapter::FileMap::instance_mutex;
@@ -183,7 +225,7 @@ CommonFile * l_blob_adapter::FileMap::get(guid_t guid)
 		else return nullptr;
 	}
 	else {
-		auto ptr=CommonFile::get(guid, azure_blob_container);
+		auto ptr=CommonFile::get(guid, *azure_blob_container);
 		if (ptr == nullptr)return nullptr;
 		filemap[guid] = std::move(ptr);
 		return filemap[guid].get();
@@ -192,7 +234,7 @@ CommonFile * l_blob_adapter::FileMap::get(guid_t guid)
 
 RegularFile * l_blob_adapter::FileMap::create_reg(guid_t guid)
 {
-	std::unique_ptr<CommonFile> ptr = RegularFile::create(guid, azure_blob_container);
+	std::unique_ptr<CommonFile> ptr = RegularFile::create(guid, *azure_blob_container);
 	std::lock_guard lock(maplock);
 	this->filemap[guid] = std::move(ptr);
 	return (RegularFile*)(this->filemap[guid]).get();
@@ -200,7 +242,7 @@ RegularFile * l_blob_adapter::FileMap::create_reg(guid_t guid)
 
 Directory * l_blob_adapter::FileMap::create_dir(guid_t guid)
 {
-	std::unique_ptr<CommonFile> ptr = Directory::create(guid, azure_blob_container);
+	std::unique_ptr<CommonFile> ptr = Directory::create(guid, *azure_blob_container);
 	std::lock_guard lock(maplock);
 	this->filemap[guid] = std::move(ptr);
 	return (Directory *)(this->filemap[guid]).get();
@@ -226,7 +268,7 @@ static inline void trim(string_t &s) {
 	rtrim(s);
 }
 
-guid_t l_blob_adapter::parse_path_relative(string_t path, guid_t base)
+guid_t l_blob_adapter::parse_path_relative(const string_t& path, guid_t base)
 {
 	utf16istringstream iss(path);
 	string_t item;
@@ -247,3 +289,5 @@ guid_t l_blob_adapter::parse_path_relative(string_t path, guid_t base)
 	}
 	return ret;
 }
+
+
