@@ -38,7 +38,7 @@ namespace l_blob_adapter {
 		static void add_to_wait(pos_t pos);
 		static Uploader* get_instance();
 		
-		long long timeout_in_milisecond = 1000;
+		long long timeout_in_milisecond = wait_timeout_in_milisecond;
 
 	private:
 		Uploader();

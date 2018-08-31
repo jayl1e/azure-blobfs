@@ -11,7 +11,7 @@
 
 struct Str_options str_options = {};
 int file_cache_timeout_in_seconds = 30;
-int default_permission = 0;
+int default_permission = 0777;
 struct fuse_operations azs_fuse_operations = {};
 using std::wstring;
 using std::string;
@@ -46,6 +46,7 @@ void split_path(std::string path, string_t& parentname, string_t& shortname) {
 	size_t pos = path.find_last_of('/');
 	parentname = utility::conversions::to_string_t(path.substr(0, pos));
 	shortname = utility::conversions::to_string_t(path.substr(pos + 1));
+	trim(shortname);
 }
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -448,14 +449,14 @@ void configure_fuse(struct fuse_args *args)
 	{
 		file_cache_timeout_in_seconds = 120;
 	}
-	fuse_opt_add_arg(args, "-s");//disable multithread
+	//fuse_opt_add_arg(args, "-s");//disable multithread
 	fuse_opt_add_arg(args, "-ovolname=DDD");
-	fuse_opt_add_arg(args, "-odefault_permissions");
+	
 	// FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
 	// This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
 	fuse_opt_add_arg(args, "-ohard_remove");
 	fuse_opt_add_arg(args, "-obig_writes");
-	fuse_opt_add_arg(args, "-ofsname=azureblobfs");
+	fuse_opt_add_arg(args, "-ofsname=blobfs");
 	fuse_opt_add_arg(args, "-okernel_cache");
 }
 
@@ -545,14 +546,16 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	AZS_DEBUGLOGV("getattr called with path = %s\n", path);
+	//AZS_DEBUGLOGV("getattr called with path = %s\n", path);
 	CommonFile * t = parse_path(path);
 	if (t == nullptr) {
 		errno = ENOENT;
-		return -1;
+		return -ENOENT;
 	}
 	else {
-		return t->azs_getattr(stbuf);
+		int r = t->azs_getattr(stbuf, default_permission);
+		if (r)errno = r;
+		return -r;
 	}
 }
 
@@ -635,13 +638,18 @@ int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *f
 	return 0;
 }
 
-int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
+int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	AZS_DEBUGLOGV("azs_create called with path = %s\n", path);
 	
-	string_t sparent;
+	string_t parentname;
 	string_t shortname;
-	split_path(path, sparent, shortname);
-	Directory* parent = parse_path(sparent)->to_dir();
+	split_path(path, parentname, shortname);
+	if (shortname.empty()) {
+		syslog(LOG_NOTICE, "short name invalid, path= %s\n", path);
+		errno = EACCES;
+		return -1;
+	}
+	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
 		return -1;
@@ -657,9 +665,9 @@ int azs_create_stub(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	return 0;
 }
 
-int azs_release_stub(const char *path, struct fuse_file_info * fi) {
-
-	delete (fhwraper*)fi->fh;
+int azs_release(const char *path, struct fuse_file_info * fi) {
+	AZS_DEBUGLOGV("azs_release called with path = %s\n", path);
+	delete (fhwraper*)(fi->fh);
 	return 0;
 }
 
@@ -667,12 +675,18 @@ int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_i
 	return 0;
 }
 
-int azs_mkdir_stub(const char *path, mode_t) {
+int azs_mkdir(const char *path, mode_t) {
 	AZS_DEBUGLOGV("azs_mkdir called with path = %s\n", path);
 	
-	string_t sparent ;
+	string_t parentname ;
 	string_t shortname ;
-	Directory* parent = parse_path(sparent)->to_dir();
+	split_path(path, parentname, shortname);
+	if (shortname.empty()) {
+		syslog(LOG_NOTICE, "short name invalid, path= %s\n", path);
+		errno = EACCES;
+		return -1;
+	}
+	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
 		return -1;
@@ -684,13 +698,13 @@ int azs_mkdir_stub(const char *path, mode_t) {
 	return 0;
 }
 
-int azs_unlink_stub(const char *path) {
+int azs_unlink(const char *path) {
 	AZS_DEBUGLOGV("azs_unlink called with path = %s\n", path);
 	
-	string_t sparent;
+	string_t parentname;
 	string_t shortname;
-	split_path(path, sparent, shortname);
-	Directory* parent = parse_path(sparent)->to_dir();
+	split_path(path, parentname, shortname);
+	Directory* parent = parse_path(parentname)->to_dir();
 	/*RegularFile * file = parse_path(path)->to_reg();
 	if (file == nullptr) {
 		errno = ENOENT;
@@ -708,12 +722,12 @@ int azs_unlink_stub(const char *path) {
 	return 0;
 }
 
-int azs_rmdir_stub(const char *path) {
+int azs_rmdir(const char *path) {
 	AZS_DEBUGLOGV("azs_unlink called with path = %s\n", path);
-	string_t sparent;
+	string_t parentname;
 	string_t shortname;
-	split_path(path, sparent, shortname);
-	Directory* parent = parse_path(sparent)->to_dir();
+	split_path(path, parentname, shortname);
+	Directory* parent = parse_path(parentname)->to_dir();
 	Directory * file = parse_path(path)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
@@ -762,21 +776,35 @@ void azs_destroy(void * /*private_data*/)
 	Uploader::stop();
 }
 
-
+int azs_access(const char *path, int mask) {
+	AZS_DEBUGLOGV("azs_access called with path = %s : mask= %d \n", path, mask);
+	CommonFile* file = parse_path(path);
+	if (!file || file->exist()) {
+		errno = ENOENT;
+		return -1;
+	}
+	return 0;
+}
 
 int azs_rename(const char *src, const char *dst) {
 	AZS_DEBUGLOGV("azs_rename called with src = %s : dst= %s \n", src,dst);
 	
-	string_t sparent;
+	string_t parentname;
 	string_t shortname;
-	split_path(src, sparent, shortname);
-	Directory* parent = parse_path(sparent)->to_dir();
+	split_path(src, parentname, shortname);
+	Directory* parent = parse_path(parentname)->to_dir();
 	
 	
-	string_t dsparent;
+	string_t dparentname;
 	string_t dshortname;
-	split_path(src, dsparent, dshortname);
-	Directory* dparent = parse_path(dsparent)->to_dir();
+	split_path(dst, dparentname, dshortname);
+	Directory* dparent = parse_path(dparentname)->to_dir();
+
+	if (dshortname.empty()) {
+		syslog(LOG_NOTICE, "short name invalid, path= %s\n", dst);
+		errno = EACCES;
+		return -1;
+	}
 
 	if (!(parent&&dparent)) {
 		errno = EACCES;
@@ -824,17 +852,18 @@ int azs_flush(const char *path, struct fuse_file_info *fi) {
 void set_up_callbacks() {
 	azs_fuse_operations.init = azs_init;
 	azs_fuse_operations.statfs = azs_statfs;
+	azs_fuse_operations.access = azs_access;
 	azs_fuse_operations.getattr = azs_getattr;
 	azs_fuse_operations.readdir = azs_readdir;
 	azs_fuse_operations.read = azs_read;
 	azs_fuse_operations.write = azs_write;
 	azs_fuse_operations.open = azs_open;
-	azs_fuse_operations.create = azs_create_stub;
-	azs_fuse_operations.release = azs_release_stub;
+	azs_fuse_operations.create = azs_create;
+	azs_fuse_operations.release = azs_release;
 	azs_fuse_operations.fsync = azs_fsync_stub;
-	azs_fuse_operations.mkdir = azs_mkdir_stub;
-	azs_fuse_operations.unlink = azs_unlink_stub;
-	azs_fuse_operations.rmdir = azs_rmdir_stub;
+	azs_fuse_operations.mkdir = azs_mkdir;
+	azs_fuse_operations.unlink = azs_unlink;
+	azs_fuse_operations.rmdir = azs_rmdir;
 	azs_fuse_operations.chown = azs_chown_stub;
 	azs_fuse_operations.chmod = azs_chmod_stub;
 	azs_fuse_operations.utimens = azs_utimens;

@@ -15,7 +15,7 @@ namespace l_blob_adapter {
 		unique_ptr<BasicFile> basicfile;
 		std::shared_mutex f_mutex;
 		static unique_ptr<CommonFile> get(guid_t guid, const azure::storage::cloud_blob_container& container);
-		int azs_getattr(struct FUSE_STAT * stbuf);
+		int azs_getattr(struct FUSE_STAT * stbuf, int default_permission);
 		bool exist() { return basicfile!=nullptr && basicfile->exist(); }
 
 		guid_t get_id() { return basicfile->get_id(); }

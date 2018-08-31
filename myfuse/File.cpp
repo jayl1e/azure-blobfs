@@ -1,6 +1,7 @@
 #include "File.h"
 #include <cwchar>
-#include <cctype>
+#include <cwctype>
+#include "myutils.h"
 
 using namespace l_blob_adapter;
 
@@ -27,14 +28,13 @@ unique_ptr<CommonFile> l_blob_adapter::CommonFile::get(guid_t guid, const azure:
 	}
 }
 
-int l_blob_adapter::CommonFile::azs_getattr(FUSE_STAT * stbuf)
+int l_blob_adapter::CommonFile::azs_getattr(FUSE_STAT * stbuf, int default_permission)
 {
 	if (!this->exist()) {
-		errno = ENOENT;
-		return -1;
+		return ENOENT;
 	}
 	if (basicfile->type() == FileType::F_Regular) {
-		stbuf->st_mode = S_IFREG; // Regular file
+		stbuf->st_mode = S_IFREG | default_permission; // Regular file
 		stbuf->st_uid = fuse_get_context()->uid;
 		stbuf->st_gid = fuse_get_context()->gid;
 		stbuf->st_mtim = {};
@@ -44,7 +44,7 @@ int l_blob_adapter::CommonFile::azs_getattr(FUSE_STAT * stbuf)
 		stbuf->st_size = basicfile->get_filesize();
 	}
 	else {
-		stbuf->st_mode = S_IFDIR; // Regular file
+		stbuf->st_mode = S_IFDIR | default_permission; // Regular file
 		stbuf->st_uid = fuse_get_context()->uid;
 		stbuf->st_gid = fuse_get_context()->gid;
 		stbuf->st_mtim = {};
@@ -107,7 +107,10 @@ guid_t l_blob_adapter::Directory::create_dir(const string_t & name)
 	DirEntry entry;
 	wcscpy_s(entry.name, name.c_str());
 	entry.identifier = uid;
-	addEntry_nolock(entry);
+	if (!addEntry_nolock(entry)) {
+		errno = EACCES;
+		return guid_t();
+	}
 	return uid;
 }
 
@@ -123,7 +126,10 @@ guid_t l_blob_adapter::Directory::create_reg(const string_t & name)
 	DirEntry entry;
 	wcscpy_s(entry.name, name.c_str());
 	entry.identifier = uid;
-	addEntry_nolock(entry);
+	if (!addEntry_nolock(entry)) {
+		errno = EACCES;
+		return guid_t();
+	}
 	return uid;
 }
 
@@ -181,6 +187,7 @@ unique_ptr<CommonFile> l_blob_adapter::Directory::create(guid_t guid, const azur
 
 bool l_blob_adapter::Directory::addEntry_nolock(const DirEntry & entry)
 {
+	if (entry.name[0] == 0)return false;
 	pos_t offset = basicfile->get_filesize();
 	FileMap::instance()->get(entry.identifier)->basicfile->inc_nlink();
 	basicfile->write_bytes(offset, sizeof(DirEntry), (uint8_t*)(&entry));
@@ -246,26 +253,6 @@ Directory * l_blob_adapter::FileMap::create_dir(guid_t guid)
 	std::lock_guard lock(maplock);
 	this->filemap[guid] = std::move(ptr);
 	return (Directory *)(this->filemap[guid]).get();
-}
-
-// trim from start (in place)
-static inline void ltrim(string_t &s) {
-	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](int ch) {
-		return !std::isspace(ch);
-	}));
-}
-
-// trim from end (in place)
-static inline void rtrim(string_t &s) {
-	s.erase(std::find_if(s.rbegin(), s.rend(), [](int ch) {
-		return !std::isspace(ch);
-	}).base(), s.end());
-}
-
-// trim from both ends (in place)
-static inline void trim(string_t &s) {
-	ltrim(s);
-	rtrim(s);
 }
 
 guid_t l_blob_adapter::parse_path_relative(const string_t& path, guid_t base)

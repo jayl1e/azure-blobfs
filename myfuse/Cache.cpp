@@ -1,4 +1,5 @@
 #include "Cache.h"
+#include <assert.h>
 
 using namespace l_blob_adapter;
 
@@ -30,6 +31,7 @@ CacheItem * l_blob_adapter::BasicCache::get_item(pos_t pos)
 {
 	CacheItem * ret = nullptr;
 	ret = cache.at(pos).item.get();
+	assert(ret != nullptr);
 	put_item_back(pos);
 	return ret;
 }

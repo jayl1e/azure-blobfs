@@ -48,6 +48,7 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
 
 	set_up_callbacks();
 
+	auto& cache = BlockCache::instance()->cache;
 
 	ret = fuse_main(args.argc, args.argv, &azs_fuse_operations, NULL);
 

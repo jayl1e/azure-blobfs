@@ -121,11 +121,16 @@ pplx::task<int> l_blob_adapter::BlockBlobUploadHelper::generate_task(pos_t pos)
 				return 0;
 			}
 			
+			
 			for (pos_t i = 0; i < snap->blocklist.size() ; i++) {
 				if (snap->blocklist.at(i).mode() == azure::storage::block_list_item::uncommitted) {
 					auto t=basefile->m_pblob->upload_block_async(snap->blocklist.at(i).id(), 
 						concurrency::streams::container_stream<vector<uint8_t>>::open_istream(BlockCache::get(snap->dirtyblock[i])->data), L"");
 					tasks.emplace_back(std::move(t));
+				}
+				if (tasks.size() > max_parral_uploading_size) {
+					concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
+					tasks.resize(0);
 				}
 			}
 			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();

@@ -4,6 +4,8 @@
 
 #include <string>
 #include <cpprest/details/basic_types.h>
+#include <cwctype>
+#include <algorithm>
 
 #define LOG_EMERG 0
 #define LOG_ALERT 1
@@ -23,6 +25,25 @@ void closelog();
 std::string wstring2string(const std::wstring& ws);
 std::wstring string2wstring(const std::string& as);
 
+// trim from start (in place)
+static inline void ltrim(std::wstring &s) {
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](int ch) {
+		return !std::iswspace(ch);
+	}));
+	}
+
+// trim from end (in place)
+static inline void rtrim(std::wstring &s) {
+	s.erase(std::find_if(s.rbegin(), s.rend(), [](int ch) {
+		return !std::iswspace(ch);
+	}).base(), s.end());
+}
+
+// trim from both ends (in place)
+static inline void trim(std::wstring &s) {
+	ltrim(s);
+	rtrim(s);
+}
 
 #ifdef _UTF16_STRINGS
 #define my_to_string(x) std::to_wstring(x)
