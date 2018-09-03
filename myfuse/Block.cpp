@@ -28,7 +28,7 @@ BlockCache* BlockCache:: s_instance=nullptr;
 mutex BlockCache::instance_mutex;
 
 l_blob_adapter::BlockCache::BlockCache() :BasicCache(default_cache_size){
-
+	this->cache.reserve(default_cache_size+50);
 }
 
 pos_t l_blob_adapter::BlockCache::get_free()

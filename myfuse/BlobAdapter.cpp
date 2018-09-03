@@ -438,7 +438,7 @@ void configure_fuse(struct fuse_args *args)
 {
 	fuse_opt_add_arg(args, "-omax_read=131072");
 
-	fuse_opt_add_arg(args, "-f");
+	fuse_opt_add_arg(args, "-f"); //forground window
 
 	if (options.file_cache_timeout_in_seconds != NULL)
 	{
