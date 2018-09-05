@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <was/storage_account.h>
 #include <was/blob.h>
 #include <cpprest/filestream.h>  
@@ -512,7 +513,7 @@ void *azs_init(struct fuse_conn_info * conn)
 	//  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
 	//gc_cache.run();
-
+	AZS_DEBUGLOGV("azs_init ended");
 	return NULL;
 }
 
@@ -622,6 +623,17 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 
 int azs_truncate(const char * path, FUSE_OFF_T offset) {
 	AZS_DEBUGLOGV("azs_truncate called with path = %s\n", path);
+	CommonFile * file = parse_path(path);
+	if (file == nullptr) {
+		errno = ENOENT;
+		return -1;
+	}
+	if (file->get_type() == FileType::F_Directory) {
+		errno = EISDIR;
+		return -1;
+	}
+	RegularFile * reg = file->to_reg();
+	reg->trancate(offset);
 	return 0;
 }
 

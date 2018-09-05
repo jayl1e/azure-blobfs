@@ -75,12 +75,12 @@ pos_t l_blob_adapter::BasicCache::put_new_item(unique_ptr<CacheItem>&& item)
 	return pos;
 }
 
-pos_t l_blob_adapter::BasicCache::get_free_from_list()
+pos_t l_blob_adapter::BasicCache::get_free_from_list(pos_t ignore)
 {
 	while (true) {
 
 		pos_t pos = cache.at(0).next;
-		while (pos != 1)
+		while (pos != 1 && pos!=ignore)
 		{
 			CacheItem & item = *(cache.at(pos).item);
 			std::lock_guard<std::mutex> lock(item.status_mutex);

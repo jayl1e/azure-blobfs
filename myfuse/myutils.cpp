@@ -1,7 +1,7 @@
+#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #include "myutils.h"
 #include <stdio.h>
 #include <varargs.h>
-
 #include <codecvt>
 
 static int __log_base_level = LOG_DEBUG;

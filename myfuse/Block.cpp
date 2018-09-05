@@ -31,10 +31,10 @@ l_blob_adapter::BlockCache::BlockCache() :BasicCache(default_cache_size){
 	this->cache.reserve(default_cache_size+50);
 }
 
-pos_t l_blob_adapter::BlockCache::get_free()
+pos_t l_blob_adapter::BlockCache::get_free(pos_t ignore)
 {
 	if (instance()->is_full()) {
-		return instance()->get_free_from_list();
+		return instance()->get_free_from_list(ignore);
 	}
 	else {
 		unique_ptr<Block> ptr = std::make_unique<Block>(default_block_size);

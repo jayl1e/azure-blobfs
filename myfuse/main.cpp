@@ -1,10 +1,11 @@
-﻿#include <was/storage_account.h>
+﻿#define _CRT_SECURE_NO_WARNINGS
+#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+#include <was/storage_account.h>
 #include <was/blob.h>
 #include <cpprest/filestream.h>  
 #include <cpprest/containerstream.h>
 #include <cpprest/producerconsumerstream.h>
 #include <codecvt>
-
 #include "BlobAdapter.h"
 
 using std::wstring;
@@ -29,7 +30,7 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
 		int r=WideCharToMultiByte(CP_UTF8, 0, argv[i], 0,nullptr, 0, NULL, NULL);
 		std::wstring_convert<std::codecvt_utf8<wchar_t> >conv;
 		string str= conv.to_bytes(argv[i]);
-		cargv[i] = strdup(str.c_str());
+		cargv[i] = _strdup(str.c_str());
 	}
 	struct fuse_args args;
 	int ret = read_and_set_arguments(argc, cargv, &args);

@@ -92,6 +92,7 @@ size_t l_blob_adapter::BasicFile::write_bytes(const pos_t offset, const size_t s
 		this->status = ItemStatus::Dirty;
 		Uploader::add_to_wait((pos_t)this);
 	}
+	
 	return size;
 }
 
@@ -128,7 +129,7 @@ size_t l_blob_adapter::BasicFile::resize(size_t size)
 	if (new_size > old_size) {
 		blocklist.resize(new_size, 0);
 		for (size_t i = old_size; i < new_size; ++i) {
-			pos_t blockpos = BlockCache::get_free();
+			pos_t blockpos = BlockCache::get_free(0);
 
 			Block * pblock = BlockCache::get(blockpos);
 			pblock->basefile = this;
@@ -202,7 +203,7 @@ const Block * l_blob_adapter::BasicFile::get_read_block(const size_t blockindex)
 		buffer.set_buffer_size(this->blocksize, std::ios_base::out);
 		auto ostream = concurrency::streams::ostream(buffer);
 		m_pblob->download_range_to_stream(ostream, blockindex*this->blocksize, this->blocksize);
-		pos_t blockpos = BlockCache:: get_free();
+		pos_t blockpos = BlockCache:: get_free(0);
 		Block * pblock = BlockCache::get(blockpos);
 		std::lock_guard blockguard(pblock->status_mutex);
 		pblock->basefile = this;
@@ -232,7 +233,7 @@ Block * l_blob_adapter::BasicFile::get_write_block(const size_t blockindex)
 			Block *nblock = nullptr;
 			pos_t npos = 0;
 			pblock->status = ItemStatus::Up_Expired;
-			npos = BlockCache::get_free();
+			npos = BlockCache::get_free(pos);
 			nblock = BlockCache::get(npos);
 			std::lock_guard<std::mutex> nlock(nblock->status_mutex);
 			*nblock = *pblock;
@@ -243,7 +244,7 @@ Block * l_blob_adapter::BasicFile::get_write_block(const size_t blockindex)
 		return pblock;
 	}
 	else {
-		pos_t blockpos = BlockCache::get_free();
+		pos_t blockpos = BlockCache::get_free(0);
 		Block * pblock = BlockCache::get(blockpos);
 		pblock->basefile = this;
 		pblock->block_index = blockindex;
@@ -272,7 +273,7 @@ Block * l_blob_adapter::BasicFile::get_write_block_copy(const size_t blockindex)
 			Block *nblock = nullptr;
 			pos_t npos = 0;
 			pblock->status = ItemStatus::Up_Expired;
-			npos = BlockCache::get_free();
+			npos = BlockCache::get_free(pos);
 			nblock = BlockCache::get(npos);
 			std::lock_guard<std::mutex> nlock(nblock->status_mutex);
 			*nblock = *pblock;
@@ -287,7 +288,7 @@ Block * l_blob_adapter::BasicFile::get_write_block_copy(const size_t blockindex)
 		buffer.set_buffer_size(this->blocksize, std::ios_base::out);
 		auto ostream = concurrency::streams::ostream(buffer);
 		m_pblob->download_range_to_stream(ostream, blockindex*this->blocksize, this->blocksize);
-		pos_t blockpos = BlockCache::get_free();
+		pos_t blockpos = BlockCache::get_free(0);
 		Block * pblock = BlockCache::get(blockpos);
 		std::lock_guard blockguard(pblock->status_mutex);
 		pblock->basefile = this;
@@ -328,6 +329,8 @@ l_blob_adapter::Snapshot::Snapshot(BasicFile & file, std::unique_lock<std::mutex
 			Block& block =*(BlockCache::get(file.blocklist.at(index)));
 			
 			if (block.compare_and_set(ItemStatus::Dirty,ItemStatus::Uploading)) {
+
+				// std::unique_lock lock(block.write_mut);
 				this->dirtyblock[index] = file.blocklist.at(index);
 				this->blocklist.emplace_back(blockid, azure::storage::block_list_item::uncommitted );
 			}

@@ -28,13 +28,11 @@ namespace l_blob_adapter {
 
 		static unique_ptr<BasicFile> get(guid_t file_identifier, const azure::storage::cloud_blob_container& container);
 		static unique_ptr<BasicFile> create(guid_t file_identifier, FileType type, const azure::storage::cloud_blob_container& container);
-
-		inline FileType type() { return this->m_type;};
-		inline bool exist() { return m_exist; };
 		unique_ptr<Snapshot> create_snap(); 
 
-	public:
 		guid_t get_id() { return m_file_identifier; }
+		inline FileType type() { return this->m_type; };
+		inline bool exist() { return m_exist; };
 		size_t write_bytes(const pos_t offset, const size_t size, const uint8_t * buf);
 		size_t read_bytes(const pos_t offset, const size_t size, uint8_t * buf);
 		size_t set_meta(const string_t& key, const string_t& val); //lock file

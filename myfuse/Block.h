@@ -28,7 +28,7 @@ namespace l_blob_adapter {
 		BlockCache();
 
 	public:
-		static pos_t get_free();
+		static pos_t get_free(pos_t ignore);
 		static Block* get(pos_t pos) { return static_cast<Block*> (instance()->get_item(pos)); };
 		static void put_front(pos_t pos) { return instance()->put_item_front(pos); }
 	};

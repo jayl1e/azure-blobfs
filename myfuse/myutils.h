@@ -1,7 +1,6 @@
 #pragma once
 #ifndef MYUTILS_H
 #define MYUTILS_H
-
 #include <string>
 #include <cpprest/details/basic_types.h>
 #include <cwctype>

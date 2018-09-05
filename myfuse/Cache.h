@@ -47,7 +47,7 @@ namespace l_blob_adapter {
 		// the size may exceed the max_cache_size
 		bool is_full() { return cache.size() >= max_cache_size;}
 		pos_t put_new_item(unique_ptr<CacheItem>&& item);// lock
-		pos_t get_free_from_list();//lock
+		pos_t get_free_from_list(pos_t ignore);//lock
 
 		CacheItem* get_item(pos_t pos);// lock
 		void put_item_front(pos_t pos);// lock

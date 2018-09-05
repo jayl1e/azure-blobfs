@@ -5,6 +5,7 @@
 #include <string>
 #include <shared_mutex>
 
+
 namespace l_blob_adapter {
 	//guid_t means unique id (uuid)
 	using guid_t = utility::uuid;
