@@ -465,7 +465,7 @@ void configure_fuse(struct fuse_args *args)
 void *azs_init(struct fuse_conn_info * conn)
 {
 	// Retrieve storage account from connection string.
-	AZS_DEBUGLOGV("azs_init called");
+	AZS_DEBUGLOGV("start");
 	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 	storage_connection_string += U(";AccountName=");
 	storage_connection_string += string2wstring(str_options.accountName);
@@ -513,7 +513,7 @@ void *azs_init(struct fuse_conn_info * conn)
 	//  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
 	//gc_cache.run();
-	AZS_DEBUGLOGV("azs_init ended");
+	AZS_DEBUGLOGV("ended");
 	return NULL;
 }
 
@@ -521,7 +521,7 @@ void *azs_init(struct fuse_conn_info * conn)
 
 int azs_statfs(const char *path, struct statvfs * stbuf)
 {
-	AZS_DEBUGLOGV("azs_statfs called with path = %s.\n", path);
+	AZS_DEBUGLOGV("path = %s", path);
 	std::string pathString(path);
 
 	struct FUSE_STAT statbuf;
@@ -532,6 +532,7 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 	int getattrret = azs_getattr(path, &statbuf);
 	if (getattrret != 0)
 	{
+		AZS_DEBUGLOGV("end error : %d, path = %s",getattrret, path);
 		return getattrret;
 	}
 
@@ -540,22 +541,24 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 	////int res = statvfs(str_options.tmpPath.c_str(), stbuf);
 	////if (res == -1)
 	////	return -errno;
-
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	//AZS_DEBUGLOGV("getattr called with path = %s\n", path);
+	// AZS_DEBUGLOGV("path = %s", path);
 	CommonFile * t = parse_path(path);
 	if (t == nullptr) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d , path : %s", errno, path);
 		return -ENOENT;
 	}
 	else {
 		int r = t->azs_getattr(stbuf, default_permission);
 		if (r)errno = r;
+		//AZS_DEBUGLOGV("end");
 		return -r;
 	}
 }
@@ -563,40 +566,46 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *)
 {
-	AZS_DEBUGLOGV("azs_readdir called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s", path);
 	Directory* t = parse_path(path)->to_dir();
 	if (t == nullptr) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	else {
-		return t->azs_readdir(buf, filler);
+		int r = t->azs_readdir(buf, filler);
+		AZS_DEBUGLOGV("end");
+		return r;
 	}
 }
 
 
 static int azs_open(const char *path, struct fuse_file_info *fi)
 {
-	AZS_DEBUGLOGV("azs_open called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s", path);
 
 	CommonFile * file = parse_path(path);
 	if (file == nullptr) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file->get_type()==FileType::F_Directory) {
 		errno = EISDIR;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	fhwraper* fh = new fhwraper(file);
 	fh->flag = fi->flags & 0x3;
 	fi->fh = (uint64_t)fh;
+	AZS_DEBUGLOGV("end, handle : %ulld", fi->fh);
 	return 0;
 }
 
 static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
 {
-	AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s, offset : %lld, size : %lld", path,offset,size);
 	fhwraper *fh = (fhwraper *)(fi->fh);
 	CommonFile *file = fh->file;
 	auto f = file->to_reg();
@@ -604,11 +613,13 @@ static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offse
 		errno = EBADF;
 		return -1;
 	}
-	return f->read(offset, size, (uint8_t*)buf);
+	int readcnt= f->read(offset, size, (uint8_t*)buf);
+	AZS_DEBUGLOGV("end, read : %d, handle : %ulld", readcnt, fi->fh);
+	return readcnt;
 }
 
 static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info *fi) {
-	AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s, offset : %lld, size : %lld", path, offset, size);
 	fhwraper *fh = (fhwraper *)(fi->fh);
 	CommonFile *file = fh->file;
 	auto f = file->to_reg();
@@ -616,42 +627,49 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 		errno = EBADF;
 		return -1;
 	}
-	return f->write(offset, size, (uint8_t*)buf);
+	int writecnt = f->write(offset, size, (uint8_t*)buf);
+	AZS_DEBUGLOGV("end, write : %d, handle : %ulld", writecnt, fi->fh);
+	return writecnt;
 }
 
 
 
 int azs_truncate(const char * path, FUSE_OFF_T offset) {
-	AZS_DEBUGLOGV("azs_truncate called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s, size : %lld", path, offset);
 	CommonFile * file = parse_path(path);
 	if (file == nullptr) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file->get_type() == FileType::F_Directory) {
 		errno = EISDIR;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	RegularFile * reg = file->to_reg();
 	reg->trancate(offset);
+	AZS_DEBUGLOGV("end, trancate : %lld", offset);
 	return 0;
 }
 
 int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *fi) {
-	AZS_DEBUGLOGV("azs_ftruncate called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s, size : %lld", path, offset);
 	fhwraper *fh = (fhwraper *)(fi->fh);
 	CommonFile *file = fh->file;
 	auto f = file->to_reg();
 	if (!(fh->flag & 0x3) || !f) {
 		errno = EBADF;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	f->trancate(offset);
+	AZS_DEBUGLOGV("end, trancate : %lld", offset);
 	return 0;
 }
 
 int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-	AZS_DEBUGLOGV("azs_create called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s, mode : %u", path, mode);
 	
 	string_t parentname;
 	string_t shortname;
@@ -664,22 +682,26 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	guid_t uid= parent->create_reg(shortname);
 	if (uid == guid_t()) {
+		AZS_DEBUGLOGV("error , path = %s", path);
 		return -1;
 	}
 	CommonFile* file = FileMap::instance()->get(uid);
 	fhwraper* fh = new fhwraper(file);
 	fh->flag = fi->flags & 0x3;
 	fi->fh = (uint64_t)fh;
+	AZS_DEBUGLOGV("end, handle : %ulld", fi->fh);
 	return 0;
 }
 
 int azs_release(const char *path, struct fuse_file_info * fi) {
-	AZS_DEBUGLOGV("azs_release called with path = %s\n", path);
+	AZS_DEBUGLOGV("apath = %s, handle : %ulld", path,fi->fh);
 	delete (fhwraper*)(fi->fh);
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
@@ -688,7 +710,7 @@ int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_i
 }
 
 int azs_mkdir(const char *path, mode_t) {
-	AZS_DEBUGLOGV("azs_mkdir called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s", path);
 	
 	string_t parentname ;
 	string_t shortname ;
@@ -696,22 +718,26 @@ int azs_mkdir(const char *path, mode_t) {
 	if (shortname.empty()) {
 		syslog(LOG_NOTICE, "short name invalid, path= %s\n", path);
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	guid_t uid = parent->create_dir(shortname);
 	if (uid == guid_t()) {
+		AZS_DEBUGLOGV("error , path = %s", path);
 		return -1;
 	}
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 int azs_unlink(const char *path) {
-	AZS_DEBUGLOGV("azs_unlink called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s", path);
 	
 	string_t parentname;
 	string_t shortname;
@@ -724,18 +750,21 @@ int azs_unlink(const char *path) {
 	}*/
 	if (parent == nullptr) {
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	bool sucess = parent->rmEntry(shortname);
 	if (!sucess) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 int azs_rmdir(const char *path) {
-	AZS_DEBUGLOGV("azs_unlink called with path = %s\n", path);
+	AZS_DEBUGLOGV("path = %s", path);
 	string_t parentname;
 	string_t shortname;
 	split_path(path, parentname, shortname);
@@ -743,14 +772,17 @@ int azs_rmdir(const char *path) {
 	Directory * file = parse_path(path)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file == nullptr) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file->entry_cnt() > 2) {
 		errno = ENOTEMPTY;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	file->rmEntry(_XPLATSTR(".."));
@@ -759,8 +791,10 @@ int azs_rmdir(const char *path) {
 	bool sucess = parent->rmEntry(shortname);
 	if (!sucess) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
@@ -789,17 +823,19 @@ void azs_destroy(void * /*private_data*/)
 }
 
 int azs_access(const char *path, int mask) {
-	AZS_DEBUGLOGV("azs_access called with path = %s : mask= %d \n", path, mask);
+	AZS_DEBUGLOGV("path = %s : mask= %d", path, mask);
 	CommonFile* file = parse_path(path);
 	if (!file || file->exist()) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 int azs_rename(const char *src, const char *dst) {
-	AZS_DEBUGLOGV("azs_rename called with src = %s : dst= %s \n", src,dst);
+	AZS_DEBUGLOGV("src = %s : dst= %s", src,dst);
 	
 	string_t parentname;
 	string_t shortname;
@@ -815,11 +851,13 @@ int azs_rename(const char *src, const char *dst) {
 	if (dshortname.empty()) {
 		syslog(LOG_NOTICE, "short name invalid, path= %s\n", dst);
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src,dst);
 		return -1;
 	}
 
 	if (!(parent&&dparent)) {
 		errno = EACCES;
+		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src, dst);
 		return -1;
 	}
 
@@ -828,15 +866,18 @@ int azs_rename(const char *src, const char *dst) {
 
 	if (uid == guid_t()) {
 		errno = ENOENT;
+		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src, dst);
 		return -1;
 	}
 	if (otheruid != guid_t()) {
 		errno = EEXIST;
+		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src, dst);
 		return -1;
 	}
 	
 	dparent->addEntry(dshortname, uid);
 	parent->rmEntry(shortname);
+	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
