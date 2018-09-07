@@ -464,6 +464,7 @@ void configure_fuse(struct fuse_args *args)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
+	openlog("", 0, 0);
 	// Retrieve storage account from connection string.
 	AZS_DEBUGLOGV("start");
 	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
@@ -599,7 +600,7 @@ static int azs_open(const char *path, struct fuse_file_info *fi)
 	fhwraper* fh = new fhwraper(file);
 	fh->flag = fi->flags & 0x3;
 	fi->fh = (uint64_t)fh;
-	AZS_DEBUGLOGV("end, handle : %ulld", fi->fh);
+	AZS_DEBUGLOGV("end, handle : %llx", fi->fh);
 	return 0;
 }
 
@@ -614,7 +615,7 @@ static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offse
 		return -1;
 	}
 	int readcnt= f->read(offset, size, (uint8_t*)buf);
-	AZS_DEBUGLOGV("end, read : %d, handle : %ulld", readcnt, fi->fh);
+	AZS_DEBUGLOGV("end, read : %d, handle : %llx", readcnt, fi->fh);
 	return readcnt;
 }
 
@@ -628,7 +629,7 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 		return -1;
 	}
 	int writecnt = f->write(offset, size, (uint8_t*)buf);
-	AZS_DEBUGLOGV("end, write : %d, handle : %ulld", writecnt, fi->fh);
+	AZS_DEBUGLOGV("end, write : %d, handle : %llx", writecnt, fi->fh);
 	return writecnt;
 }
 
@@ -694,13 +695,14 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	fhwraper* fh = new fhwraper(file);
 	fh->flag = fi->flags & 0x3;
 	fi->fh = (uint64_t)fh;
-	AZS_DEBUGLOGV("end, handle : %ulld", fi->fh);
+	AZS_DEBUGLOGV("end, handle : %llx", fi->fh);
 	return 0;
 }
 
 int azs_release(const char *path, struct fuse_file_info * fi) {
-	AZS_DEBUGLOGV("apath = %s, handle : %ulld", path,fi->fh);
+	AZS_DEBUGLOGV("path = %s, handle : %llx", path,fi->fh);
 	delete (fhwraper*)(fi->fh);
+	fi->fh = 0;
 	AZS_DEBUGLOGV("end");
 	return 0;
 }

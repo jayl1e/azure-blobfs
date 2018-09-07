@@ -6,6 +6,8 @@
 #include <chrono>
 #include <sys/timeb.h>
 #include <mutex>
+#include <thread>
+#include <iomanip>
 
 static int __log_base_level = LOG_DEBUG;
 static std::string __log_ident;
@@ -31,8 +33,11 @@ void syslog(int level, const char * format, ...) {
 	va_start(args, format);
 	va_arg(args, const char *);
 	if (level <= __log_base_level) {
-		printf_s("%.15s.%03d : ", timeline + 4, timebuffer.millitm);
-		printf_s(__log_ident.c_str());
+		std::ostringstream str;
+		str.write(timeline + 4, 15);
+		str << '.' << std::setw(3) <<std::setfill('0')<< timebuffer.millitm;
+		str << ": thread " << std::this_thread::get_id()<<" : ";
+		printf_s("%s", str.str().c_str());
 		vprintf(format, args);
 		printf("\n");
 	}

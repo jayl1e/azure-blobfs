@@ -28,5 +28,5 @@ namespace l_blob_adapter {
 	const size_t default_cache_size = 5000;
 	const size_t default_block_size = 1<<20;
 	const size_t max_parral_uploading_size = 50;
-	const size_t uploader_min_latency_millisec = 3000;
+	const size_t uploader_min_latency_millisec = 2000;
 }
