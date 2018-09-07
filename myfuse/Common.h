@@ -25,8 +25,8 @@ namespace l_blob_adapter {
 	using std::vector;
 	using utility::string_t;
 
-	const size_t default_cache_size = 10000;
-	const size_t default_block_size = 1<<18;
-	const size_t wait_timeout_in_milisecond = 1000;
+	const size_t default_cache_size = 5000;
+	const size_t default_block_size = 1<<20;
 	const size_t max_parral_uploading_size = 50;
+	const size_t uploader_min_latency_millisec = 3000;
 }

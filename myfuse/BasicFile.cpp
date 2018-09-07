@@ -74,25 +74,37 @@ size_t l_blob_adapter::BasicFile::write_bytes(const pos_t offset, const size_t s
 	Block* p =nullptr;
 	if (start_index == end_index) {
 		p = this->get_write_block_copy(start_index);
-		for (cbuf = 0; cbuf < size; ++cbuf) p->data[cblock + cbuf]= buf[cbuf];
+		// for (cbuf = 0; cbuf < size; ++cbuf) p->data[cblock + cbuf]= buf[cbuf];
+		// fast copy
+		memcpy_s(p->data.data()+cblock, p->data.size()-cblock, buf, size);
+		cbuf = size;
 	}
 	else {
 		p = this->get_write_block_copy(start_index);
-		for (cbuf = 0; cbuf<blocksize - cblock; ++cbuf)p->data[cblock + cbuf]= buf[cbuf];
+		// for (cbuf = 0; cbuf < blocksize - cblock; ++cbuf) p->data[cblock + cbuf] = buf[cbuf];
+		// fast copy
+		memcpy_s(p->data.data() + cblock, p->data.size() - cblock, buf, blocksize - cblock);
+		cbuf = blocksize - cblock;
+
 		for (index = start_index + 1; index < end_index; index++)
 		{
 			p = get_write_block(index);
-			for (cblock = 0; cblock < blocksize; ++cblock, ++cbuf)p->data[cblock]= buf[cbuf];
+			// for (cblock = 0; cblock < blocksize; ++cblock, ++cbuf)p->data[cblock]= buf[cbuf];
+			// fast copy
+			memcpy_s(p->data.data(), p->data.size(), buf+cbuf, blocksize - cblock);
+			cbuf += blocksize;
 		}
 		p = get_write_block_copy(end_index);
-		for (cblock = 0; cbuf < size; ++cbuf, ++cblock)p->data[cblock]= buf[cbuf];
+		// for (cblock = 0; cbuf < size; ++cbuf, ++cblock)p->data[cblock]= buf[cbuf];
+		// fast copy
+		memcpy_s(p->data.data(), p->data.size(), buf + cbuf, size-cbuf);
+		cbuf =size;
 	}
 	std::lock_guard lock(this->m_mutex);
 	if (this->status != ItemStatus::Dirty) {
 		this->status = ItemStatus::Dirty;
 		Uploader::add_to_wait((pos_t)this);
 	}
-	
 	return size;
 }
 
@@ -105,17 +117,30 @@ size_t l_blob_adapter::BasicFile::read_bytes(const pos_t offset, const size_t si
 	pos_t cblock=offset-start_index*blocksize, cbuf = 0, index = start_index;
 	const Block* p = get_read_block(index);
 	if (start_index == end_index) {
-		for (cbuf = 0; cbuf < to_read; ++cbuf)buf[cbuf] = p->data[cblock + cbuf];
+		// for (cbuf = 0; cbuf < to_read; ++cbuf)buf[cbuf] = p->data[cblock + cbuf];
+		// fast copy
+		memcpy_s(buf,size,p->data.data() + cblock, to_read);
+		cbuf = to_read;
 	}
 	else {
-		for(cbuf=0;cbuf<blocksize-cblock;++cbuf)buf[cbuf] = p->data[cblock + cbuf];
+		// for(cbuf=0;cbuf<blocksize-cblock;++cbuf)buf[cbuf] = p->data[cblock + cbuf];
+		// fast copy
+		memcpy_s(buf, size, p->data.data() + cblock, blocksize - cblock);
+		cbuf = blocksize - cblock;
+
 		for (index = start_index + 1; index < end_index; index++)
 		{
 			p = get_read_block(index);
-			for (cblock = 0; cblock < blocksize; ++cblock, ++cbuf)buf[cbuf] = p->data[cblock];
+			// for (cblock = 0; cblock < blocksize; ++cblock, ++cbuf)buf[cbuf] = p->data[cblock];
+			// fast copy
+			memcpy_s(buf+cbuf, size-cbuf, p->data.data(), blocksize);
+			cbuf += blocksize;
 		}
 		p = get_read_block(end_index);
-		for (cblock = 0; cbuf < to_read; ++cbuf, ++cblock)buf[cbuf] = p->data[cblock];
+		// for (cblock = 0; cbuf < to_read; ++cbuf, ++cblock)buf[cbuf] = p->data[cblock];
+		// fast copy
+		memcpy_s(buf + cbuf, size - cbuf, p->data.data(), to_read-cbuf);
+		cbuf = to_read;
 	}
 	return to_read;
 }

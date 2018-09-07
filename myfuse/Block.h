@@ -11,7 +11,11 @@ namespace l_blob_adapter {
 		vector<uint8_t> data;
 		BasicFile* basefile;
 		Block& operator=(const Block& other) {
-			this->data = other.data;
+			// this->data = other.data;
+			// fast copy
+			this->data.resize(other.data.size());
+			memcpy_s(this->data.data(), this->data.size(), other.data.data(), other.data.size());
+
 			this->basefile = other.basefile;
 			this->block_index = other.block_index;
 			return *this;

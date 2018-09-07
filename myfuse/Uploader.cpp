@@ -81,7 +81,7 @@ void l_blob_adapter::Uploader::run_upload()
 			}
 		}
 		if (is_empty) {
-			std::this_thread::sleep_for(1s);
+			std::this_thread::sleep_for(std::chrono::milliseconds(this->timeout_in_milisecond));
 			continue;
 		}
 		auto now = std::chrono::system_clock::now();
@@ -98,7 +98,7 @@ void l_blob_adapter::Uploader::run_upload()
 			}
 		}
 		else {
-			std::this_thread::sleep_for(1s);
+			std::this_thread::sleep_for(std::chrono::milliseconds(this->timeout_in_milisecond));
 		}
 	}
 }
