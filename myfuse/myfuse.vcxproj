@@ -21,21 +21,9 @@
   <ItemGroup>
     <ClCompile Include="BasicFile.cpp" />
     <ClCompile Include="BlobAdapter.cpp" />
-    <ClCompile Include="blobfuse.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="BlobProxy.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="Block.cpp" />
     <ClCompile Include="Cache.cpp" />
     <ClCompile Include="File.cpp" />
-    <ClCompile Include="hello.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="myutils.cpp" />
     <ClCompile Include="Uploader.cpp" />
@@ -45,25 +33,17 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="BasicFile.h" />
     <ClInclude Include="BlobAdapter.h" />
-    <ClInclude Include="blobfuse.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClInclude>
-    <ClInclude Include="BlobProxy.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClInclude>
     <ClInclude Include="Block.h" />
     <ClInclude Include="Cache.h" />
     <ClInclude Include="Common.h" />
     <ClInclude Include="File.h" />
     <ClInclude Include="myutils.h" />
     <ClInclude Include="Uploader.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -88,7 +68,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <CharacterSet>MultiByte</CharacterSet>
+    <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -96,7 +76,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v141</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>MultiByte</CharacterSet>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -185,12 +165,12 @@
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\packages\vcpkg-export-20180709-095456.1.0.0\build\native\vcpkg-export-20180709-095456.targets" Condition="Exists('..\packages\vcpkg-export-20180709-095456.1.0.0\build\native\vcpkg-export-20180709-095456.targets')" />
+    <Import Project="..\packages\vcpkg-export-20180909-173624.1.0.0\build\native\vcpkg-export-20180909-173624.targets" Condition="Exists('..\packages\vcpkg-export-20180909-173624.1.0.0\build\native\vcpkg-export-20180909-173624.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\packages\vcpkg-export-20180709-095456.1.0.0\build\native\vcpkg-export-20180709-095456.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\vcpkg-export-20180709-095456.1.0.0\build\native\vcpkg-export-20180709-095456.targets'))" />
+    <Error Condition="!Exists('..\packages\vcpkg-export-20180909-173624.1.0.0\build\native\vcpkg-export-20180909-173624.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\vcpkg-export-20180909-173624.1.0.0\build\native\vcpkg-export-20180909-173624.targets'))" />
   </Target>
 </Project>

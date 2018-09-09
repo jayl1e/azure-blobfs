@@ -6,6 +6,15 @@
 #include <cpprest/containerstream.h>
 #include <cpprest/producerconsumerstream.h>
 #include <codecvt>
+
+#include <log4cplus/loglevel.h>
+#include <log4cplus/logger.h>
+#include <log4cplus/fileappender.h> 
+#include <log4cplus/consoleappender.h> 
+#include <log4cplus/layout.h>
+#include <log4cplus/loggingmacros.h>
+#include <log4cplus/initializer.h>
+
 #include "BlobAdapter.h"
 
 using std::wstring;
@@ -23,7 +32,14 @@ extern struct fuse_operations azs_fuse_operations;
 using namespace concurrency;
 
 int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
-
+	log4cplus::Initializer initializer;
+	log4cplus::SharedAppenderPtr pConsoleAppender(new log4cplus::ConsoleAppender());
+	pConsoleAppender->setLayout(std::make_unique<log4cplus::TTCCLayout>());
+	auto pTestLogger = log4cplus::Logger::getInstance(L"");
+	pTestLogger.setLogLevel(log4cplus::TRACE_LOG_LEVEL);
+	pTestLogger.addAppender(pConsoleAppender);
+	
+	
 	char ** cargv = new char*[argc];
 
 	for (int i = 0; i < argc; i++) {

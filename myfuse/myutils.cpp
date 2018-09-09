@@ -8,6 +8,9 @@
 #include <mutex>
 #include <thread>
 #include <iomanip>
+#include <log4cplus/loglevel.h>
+#include <log4cplus/logger.h>
+#include <log4cplus/loggingmacros.h>
 
 static int __log_base_level = LOG_DEBUG;
 static std::string __log_ident;
@@ -19,6 +22,13 @@ void setlogmask(int logupto) {
 std::mutex log_mutex;
 
 void syslog(int level, const char * format, ...) {
+	va_list args;
+	va_start(args, format);
+	va_arg(args, const char *);
+	auto logger = log4cplus::Logger::getInstance(L"lijie");
+	LOG4CPLUS_DEBUG(logger, format);
+	return;
+
 	std::lock_guard lock(log_mutex);
 	_timeb timebuffer;
 	char timeline[26];
@@ -41,6 +51,7 @@ void syslog(int level, const char * format, ...) {
 		vprintf(format, args);
 		printf("\n");
 	}
+	va_end(args);
 }
 
 void openlog(const char * log_ident, int flag, int facility) {
