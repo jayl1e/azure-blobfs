@@ -14,6 +14,7 @@
 #include <log4cplus/layout.h>
 #include <log4cplus/loggingmacros.h>
 #include <log4cplus/initializer.h>
+#include <log4cplus/tracelogger.h>
 
 #include "BlobAdapter.h"
 
@@ -34,14 +35,22 @@ using namespace concurrency;
 int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
 	log4cplus::Initializer initializer;
 	log4cplus::SharedAppenderPtr pConsoleAppender(new log4cplus::ConsoleAppender());
-	pConsoleAppender->setLayout(std::make_unique<log4cplus::TTCCLayout>());
-	auto pTestLogger = log4cplus::Logger::getInstance(L"");
-	pTestLogger.setLogLevel(log4cplus::TRACE_LOG_LEVEL);
-	pTestLogger.addAppender(pConsoleAppender);
-	
-	
-	char ** cargv = new char*[argc];
+	log4cplus::SharedAppenderPtr pFileAppender(new log4cplus::FileAppender(LOG4CPLUS_TEXT("fulllog.log")));
+	pConsoleAppender->setName(LOG4CPLUS_TEXT("console"));
+	pConsoleAppender->setThreshold(log4cplus::DEBUG_LOG_LEVEL);
+	pFileAppender->setName(LOG4CPLUS_TEXT("file"));
+	pFileAppender->setThreshold(log4cplus::TRACE_LOG_LEVEL);
 
+	pConsoleAppender->setLayout(std::make_unique<log4cplus::PatternLayout>(L"%r %p [%t] %b:%L %M: %m %n"));
+	pFileAppender->setLayout(std::make_unique<log4cplus::PatternLayout>(L"%r %p [%t] %b:%L %M: %m %n"));
+	auto pTestLogger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT(""));
+	pTestLogger.setLogLevel(log4cplus::ALL_LOG_LEVEL);
+	pTestLogger.addAppender(pConsoleAppender);
+	pTestLogger.addAppender(pFileAppender);
+	
+	TRACE_LOG("main function");
+
+	char ** cargv = new char*[argc];
 	for (int i = 0; i < argc; i++) {
 		int r=WideCharToMultiByte(CP_UTF8, 0, argv[i], 0,nullptr, 0, NULL, NULL);
 		std::wstring_convert<std::codecvt_utf8<wchar_t> >conv;

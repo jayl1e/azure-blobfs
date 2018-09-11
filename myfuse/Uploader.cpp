@@ -1,4 +1,5 @@
 #include "Uploader.h"
+#include "myutils.h"
 #include <was/core.h>
 #include <thread>
 #include "BasicFile.h"
@@ -116,23 +117,29 @@ pplx::task<int> l_blob_adapter::BlockBlobUploadHelper::generate_task(pos_t pos)
 			auto basefile = snap->basefile;
 			vector<concurrency::task<void>> tasks;
 
+			LOG_DEBUG("uploading file=" << utility::uuid_to_string(basefile->get_id()));
+
 			if (!pfile->exist()) {
 				basefile->m_pblob->delete_blob_if_exists();
+				LOG_DEBUG("uploader delete file=" << utility::uuid_to_string(basefile->get_id()));
 				return 0;
 			}
 			
+			size_t dirty_cnt = 0;
 			
 			for (pos_t i = 0; i < snap->blocklist.size() ; i++) {
 				if (snap->blocklist.at(i).mode() == azure::storage::block_list_item::uncommitted) {
 					auto t=basefile->m_pblob->upload_block_async(snap->blocklist.at(i).id(), 
 						concurrency::streams::container_stream<vector<uint8_t>>::open_istream(BlockCache::get(snap->dirtyblock[i])->data), L"");
 					tasks.emplace_back(std::move(t));
+					dirty_cnt++;
 				}
 				if (tasks.size() > max_parral_uploading_size) {
 					concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
 					tasks.resize(0);
 				}
 			}
+			LOG_DEBUG("uploader file=" << utility::uuid_to_string(basefile->get_id()) << ", dirty blocks=" << dirty_cnt);
 			concurrency::when_all(std::begin(tasks), std::end(tasks)).wait();
 			tasks.resize(0);
 			basefile->m_pblob->upload_block_list(snap->blocklist);

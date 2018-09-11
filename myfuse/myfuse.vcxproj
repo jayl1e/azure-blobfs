@@ -97,12 +97,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\Program Files\Dokan\Dokan Library-1.1.0\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files\Dokan\Dokan Library-1.1.0\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Program Files\Dokan\Dokan Library-1.2.0\include\fuse;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files\Dokan\Dokan Library-1.2.0\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\Program Files\Dokan\Dokan Library-1.1.0\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files\Dokan\Dokan Library-1.1.0\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Program Files\Dokan\Dokan Library-1.2.0\include\fuse;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files\Dokan\Dokan Library-1.2.0\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -124,6 +124,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessToFile>false</PreprocessToFile>
     </ClCompile>
     <Link>
       <AdditionalDependencies>dokanfuse1.lib</AdditionalDependencies>
@@ -156,6 +157,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessToFile>false</PreprocessToFile>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

@@ -58,7 +58,6 @@ struct Options
 	const char *use_https; // True if https should be used (defaults to false)
 	const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
 	const char *container_name; //container to mount. Used only if config_file is not provided
-	const char *log_level; // Sets the level at which the process should log to syslog.
 	const char *version; // print blobfuse version
 	const char *help; // print blobfuse usage
 };
@@ -73,7 +72,6 @@ const struct fuse_opt option_spec[] =
 	OPTION("--use-https=%s", use_https),
 	OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
 	OPTION("--container-name=%s", container_name),
-	OPTION("--log-level=%s", log_level),
 	OPTION("--version", version),
 	OPTION("-v", version),
 	OPTION("--help", help),
@@ -118,7 +116,6 @@ int read_config_env()
 	}
 	else
 	{
-		syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
 		fprintf(stderr, "No config file was specified and AZURE_STORAGE_ACCOUNT environment variable is empty.\n");
 		return -1;
 	}
@@ -136,7 +133,6 @@ int read_config_env()
 	if ((!env_account_key && !env_sas_token) ||
 		(env_account_key && env_sas_token))
 	{
-		syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.");
 		fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.\n");
 	}
 
@@ -148,7 +144,6 @@ int read_config(const std::string configFile)
 	std::ifstream file(configFile);
 	if (!file)
 	{
-		syslog(LOG_CRIT, "Unable to start blobfuse.  No config file found at %s.", configFile.c_str());
 		fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
 		return -1;
 	}
@@ -193,20 +188,17 @@ int read_config(const std::string configFile)
 
 	if (str_options.accountName.empty())
 	{
-		syslog(LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
 		fprintf(stderr, "Account name is missing in the config file.\n");
 		return -1;
 	}
 	else if ((str_options.accountKey.empty() && str_options.sasToken.empty()) ||
 		(!str_options.accountKey.empty() && !str_options.sasToken.empty()))
 	{
-		syslog(LOG_CRIT, "Unable to start blobfuse. Exactly one of Account Key and SAS token must be specified in the config file, and the other line should be deleted.");
 		fprintf(stderr, "Unable to start blobfuse. Exactly one of Account Key and SAS token must be specified in the config file, and the other line should be deleted.\n");
 		return -1;
 	}
 	else if (str_options.containerName.empty())
 	{
-		syslog(LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
 		fprintf(stderr, "Container name is missing in the config file.\n");
 		return -1;
 	}
@@ -226,51 +218,6 @@ void print_version()
 
 int set_log_mask(const char * min_log_level_char)
 {
-	if (!min_log_level_char)
-	{
-		setlogmask(LOG_UPTO(LOG_DEBUG));
-		return 0;
-	}
-	std::string min_log_level(min_log_level_char);
-	if (min_log_level.empty())
-	{
-		setlogmask(LOG_UPTO(LOG_WARNING));
-		return 0;
-	}
-	// Options for logging: LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
-	if (min_log_level == "LOG_OFF")
-	{
-		setlogmask(LOG_UPTO(LOG_EMERG)); // We don't use 'LOG_EMERG', so this won't log anything.
-		return 0;
-	}
-	if (min_log_level == "LOG_CRIT")
-	{
-		setlogmask(LOG_UPTO(LOG_CRIT));
-		return 0;
-	}
-	if (min_log_level == "LOG_ERR")
-	{
-		setlogmask(LOG_UPTO(LOG_ERR));
-		return 0;
-	}
-	if (min_log_level == "LOG_WARNING")
-	{
-		setlogmask(LOG_UPTO(LOG_WARNING));
-		return 0;
-	}
-	if (min_log_level == "LOG_INFO")
-	{
-		setlogmask(LOG_UPTO(LOG_INFO));
-		return 0;
-	}
-	if (min_log_level == "LOG_DEBUG")
-	{
-		setlogmask(LOG_UPTO(LOG_DEBUG));
-		return 0;
-	}
-
-	syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
-	fprintf(stdout, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
 	fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
 	return 1;
 }
@@ -314,7 +261,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 		{
 			if (!options.container_name)
 			{
-				syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
 				fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
 				print_usage();
 				return 1;
@@ -340,12 +286,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 		return 1;
 	}
 
-	int res = set_log_mask(options.log_level);
-	if (res != 0)
-	{
-		print_usage();
-		return 1;
-	}
 
 	// remove last trailing slash in tmo_path
 	if (!options.tmp_path)
@@ -464,9 +404,10 @@ void configure_fuse(struct fuse_args *args)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-	openlog("", 0, 0);
+	TRACE_LOG("asyncread=" << conn->async_read << ",max_write=" << conn->max_write);
+	
 	// Retrieve storage account from connection string.
-	AZS_DEBUGLOGV("start");
+	
 	utility::string_t storage_connection_string(U("DefaultEndpointsProtocol=http"));
 	storage_connection_string += U(";AccountName=");
 	storage_connection_string += string2wstring(str_options.accountName);
@@ -488,7 +429,10 @@ void *azs_init(struct fuse_conn_info * conn)
 	auto iter = containermeta.find(L"rootdir");
 	auto iter2 = containermeta.find(L"blocksize");
 	if (iter == containermeta.end()|| iter2 == containermeta.end() || std::stoll(iter2->second) != default_block_size) {
+		
 		guid_t uid = utility::new_uuid();
+		LOG_INFO(L"create new root dir" << utility::uuid_to_string(uid));
+
 		Directory* dir = FileMap::instance()->create_dir(uid);
 		dir->addEntry(_XPLATSTR("."), uid);
 		dir->addEntry(_XPLATSTR(".."), uid);
@@ -514,7 +458,7 @@ void *azs_init(struct fuse_conn_info * conn)
 	//  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
 	//gc_cache.run();
-	AZS_DEBUGLOGV("ended");
+	LOG_DEBUG("init sucess");
 	return NULL;
 }
 
@@ -522,7 +466,7 @@ void *azs_init(struct fuse_conn_info * conn)
 
 int azs_statfs(const char *path, struct statvfs * stbuf)
 {
-	AZS_DEBUGLOGV("path = %s", path);
+	TRACE_LOG("path=" << path);
 	std::string pathString(path);
 
 	struct FUSE_STAT statbuf;
@@ -533,7 +477,7 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 	int getattrret = azs_getattr(path, &statbuf);
 	if (getattrret != 0)
 	{
-		AZS_DEBUGLOGV("end error : %d, path = %s",getattrret, path);
+		LOG_WARN(getattrret);
 		return getattrret;
 	}
 
@@ -542,24 +486,22 @@ int azs_statfs(const char *path, struct statvfs * stbuf)
 	////int res = statvfs(str_options.tmpPath.c_str(), stbuf);
 	////if (res == -1)
 	////	return -errno;
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 
 int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 {
-	// AZS_DEBUGLOGV("path = %s", path);
+	// TRACE_LOG("path=" << path);
 	CommonFile * t = parse_path(path);
 	if (t == nullptr) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d , path : %s", errno, path);
 		return -ENOENT;
 	}
 	else {
 		int r = t->azs_getattr(stbuf, default_permission);
 		if (r)errno = r;
-		//AZS_DEBUGLOGV("end");
+		
 		return -r;
 	}
 }
@@ -567,16 +509,14 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T, struct fuse_file_info *)
 {
-	AZS_DEBUGLOGV("path = %s", path);
+	TRACE_LOG("path=" << path);
 	Directory* t = parse_path(path)->to_dir();
 	if (t == nullptr) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	else {
 		int r = t->azs_readdir(buf, filler);
-		AZS_DEBUGLOGV("end");
 		return r;
 	}
 }
@@ -584,29 +524,26 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T,
 
 static int azs_open(const char *path, struct fuse_file_info *fi)
 {
-	AZS_DEBUGLOGV("path = %s", path);
-
+	TRACE_LOG("path=" << path);
 	CommonFile * file = parse_path(path);
 	if (file == nullptr) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file->get_type()==FileType::F_Directory) {
 		errno = EISDIR;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	fhwraper* fh = new fhwraper(file);
+	LOG_DEBUG("open handle=" << std::hex<< fh <<",flag="<<fi->flags);
 	fh->flag = fi->flags & 0x3;
 	fi->fh = (uint64_t)fh;
-	AZS_DEBUGLOGV("end, handle : %llx", fi->fh);
 	return 0;
 }
 
 static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info * fi)
 {
-	AZS_DEBUGLOGV("path = %s, offset : %lld, size : %lld", path,offset,size);
+	TRACE_LOG("path=" << path<<",handle"<<std::hex<<fi->fh << std::dec <<",offset="<<offset<<",size="<<size);
 	fhwraper *fh = (fhwraper *)(fi->fh);
 	CommonFile *file = fh->file;
 	auto f = file->to_reg();
@@ -615,12 +552,11 @@ static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offse
 		return -1;
 	}
 	int readcnt= f->read(offset, size, (uint8_t*)buf);
-	AZS_DEBUGLOGV("end, read : %d, handle : %llx", readcnt, fi->fh);
 	return readcnt;
 }
 
 static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T offset, struct fuse_file_info *fi) {
-	AZS_DEBUGLOGV("path = %s, offset : %lld, size : %lld", path, offset, size);
+	TRACE_LOG("path=" << path << ",handle" << std::hex << fi->fh << std::dec << ",offset=" << offset << ",size=" << size);
 	fhwraper *fh = (fhwraper *)(fi->fh);
 	CommonFile *file = fh->file;
 	auto f = file->to_reg();
@@ -629,81 +565,70 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 		return -1;
 	}
 	int writecnt = f->write(offset, size, (uint8_t*)buf);
-	AZS_DEBUGLOGV("end, write : %d, handle : %llx", writecnt, fi->fh);
 	return writecnt;
 }
 
 
 
 int azs_truncate(const char * path, FUSE_OFF_T offset) {
-	AZS_DEBUGLOGV("path = %s, size : %lld", path, offset);
+	TRACE_LOG("path=" << path << ",offset=" << offset);
 	CommonFile * file = parse_path(path);
 	if (file == nullptr) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file->get_type() == FileType::F_Directory) {
 		errno = EISDIR;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	RegularFile * reg = file->to_reg();
 	reg->trancate(offset);
-	AZS_DEBUGLOGV("end, trancate : %lld", offset);
 	return 0;
 }
 
 int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *fi) {
-	AZS_DEBUGLOGV("path = %s, size : %lld", path, offset);
+	TRACE_LOG("path=" << path << ",offset=" << offset<<"handle="<<std::hex<<fi->fh);
 	fhwraper *fh = (fhwraper *)(fi->fh);
 	CommonFile *file = fh->file;
 	auto f = file->to_reg();
 	if (!(fh->flag & 0x3) || !f) {
 		errno = EBADF;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	f->trancate(offset);
-	AZS_DEBUGLOGV("end, trancate : %lld", offset);
 	return 0;
 }
 
 int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-	AZS_DEBUGLOGV("path = %s, mode : %u", path, mode);
-	
+	TRACE_LOG("path=" << path << ",mode=" <<std::hex<< mode);
 	string_t parentname;
 	string_t shortname;
 	split_path(path, parentname, shortname);
 	if (shortname.empty()) {
-		syslog(LOG_NOTICE, "short name invalid, path= %s\n", path);
 		errno = EACCES;
 		return -1;
 	}
 	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	guid_t uid= parent->create_reg(shortname);
 	if (uid == guid_t()) {
-		AZS_DEBUGLOGV("error , path = %s", path);
 		return -1;
 	}
 	CommonFile* file = FileMap::instance()->get(uid);
 	fhwraper* fh = new fhwraper(file);
 	fh->flag = fi->flags & 0x3;
 	fi->fh = (uint64_t)fh;
-	AZS_DEBUGLOGV("end, handle : %llx", fi->fh);
 	return 0;
 }
 
 int azs_release(const char *path, struct fuse_file_info * fi) {
-	AZS_DEBUGLOGV("path = %s, handle : %llx", path,fi->fh);
+	TRACE_LOG("path=" << path << ",handle=" << std::hex << fi->fh);
+	LOG_DEBUG("path=" << path << ",handle=" << fi->fh);
 	delete (fhwraper*)(fi->fh);
 	fi->fh = 0;
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
@@ -712,35 +637,28 @@ int azs_fsync_stub(const char * /*path*/, int /*isdatasync*/, struct fuse_file_i
 }
 
 int azs_mkdir(const char *path, mode_t) {
-	AZS_DEBUGLOGV("path = %s", path);
-	
+	TRACE_LOG("path=" << path);
 	string_t parentname ;
 	string_t shortname ;
 	split_path(path, parentname, shortname);
 	if (shortname.empty()) {
-		syslog(LOG_NOTICE, "short name invalid, path= %s\n", path);
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	guid_t uid = parent->create_dir(shortname);
 	if (uid == guid_t()) {
-		AZS_DEBUGLOGV("error , path = %s", path);
 		return -1;
 	}
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 int azs_unlink(const char *path) {
-	AZS_DEBUGLOGV("path = %s", path);
-	
+	TRACE_LOG("path=" << path);
 	string_t parentname;
 	string_t shortname;
 	split_path(path, parentname, shortname);
@@ -752,21 +670,18 @@ int azs_unlink(const char *path) {
 	}*/
 	if (parent == nullptr) {
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	bool sucess = parent->rmEntry(shortname);
 	if (!sucess) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 int azs_rmdir(const char *path) {
-	AZS_DEBUGLOGV("path = %s", path);
+	TRACE_LOG("path=" << path );
 	string_t parentname;
 	string_t shortname;
 	split_path(path, parentname, shortname);
@@ -774,17 +689,14 @@ int azs_rmdir(const char *path) {
 	Directory * file = parse_path(path)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file == nullptr) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	if (file->entry_cnt() > 2) {
 		errno = ENOTEMPTY;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
 	file->rmEntry(_XPLATSTR(".."));
@@ -793,10 +705,8 @@ int azs_rmdir(const char *path) {
 	bool sucess = parent->rmEntry(shortname);
 	if (!sucess) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
@@ -820,25 +730,21 @@ int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
 
 void azs_destroy(void * /*private_data*/)
 {
-	AZS_DEBUGLOGV("azs_destroy called\n");
 	Uploader::stop();
 }
 
 int azs_access(const char *path, int mask) {
-	AZS_DEBUGLOGV("path = %s : mask= %d", path, mask);
+	TRACE_LOG("path=" << path << ",mask=" << std::hex << mask);
 	CommonFile* file = parse_path(path);
 	if (!file || file->exist()) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, path = %s", errno, path);
 		return -1;
 	}
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 
 int azs_rename(const char *src, const char *dst) {
-	AZS_DEBUGLOGV("src = %s : dst= %s", src,dst);
-	
+	TRACE_LOG("src=" << src << ",dst=" << dst);
 	string_t parentname;
 	string_t shortname;
 	split_path(src, parentname, shortname);
@@ -851,15 +757,12 @@ int azs_rename(const char *src, const char *dst) {
 	Directory* dparent = parse_path(dparentname)->to_dir();
 
 	if (dshortname.empty()) {
-		syslog(LOG_NOTICE, "short name invalid, path= %s\n", dst);
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src,dst);
 		return -1;
 	}
 
 	if (!(parent&&dparent)) {
 		errno = EACCES;
-		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src, dst);
 		return -1;
 	}
 
@@ -868,18 +771,15 @@ int azs_rename(const char *src, const char *dst) {
 
 	if (uid == guid_t()) {
 		errno = ENOENT;
-		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src, dst);
 		return -1;
 	}
 	if (otheruid != guid_t()) {
 		errno = EEXIST;
-		AZS_DEBUGLOGV("end error : %d, src = %s ,dst = %s", errno, src, dst);
 		return -1;
 	}
 	
 	dparent->addEntry(dshortname, uid);
 	parent->rmEntry(shortname);
-	AZS_DEBUGLOGV("end");
 	return 0;
 }
 

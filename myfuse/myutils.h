@@ -1,26 +1,33 @@
 #pragma once
 #ifndef MYUTILS_H
 #define MYUTILS_H
+
+
 #include <string>
 #include <cpprest/details/basic_types.h>
+#include <log4cplus/logger.h>
+#include <log4cplus/loggingmacros.h>
 #include <cwctype>
 #include <algorithm>
 
-#define LOG_EMERG 0
-#define LOG_ALERT 1
-#define LOG_CRIT 2
-#define LOG_ERR 3
-#define LOG_WARNING 4
-#define LOG_NOTICE 5
-#define LOG_INFO 6
-#define LOG_DEBUG 7
+#define LOG4CPLUS_MACRO_FUNCTION() __FUNCTION__
 
-#define LOG_UPTO(x) x
+extern log4cplus::Logger g_logger;
+#define LOG_FATAL(logEvent)  LOG4CPLUS_FATAL(g_logger, logEvent)
+#define LOG_ERROR(logEvent)  LOG4CPLUS_ERROR(g_logger,logEvent)
+#define LOG_WARN(logEvent)   LOG4CPLUS_WARN(g_logger, logEvent)
+#define LOG_INFO(logEvent)   LOG4CPLUS_INFO(g_logger, logEvent)
+#define LOG_DEBUG(logEvent)  LOG4CPLUS_DEBUG(g_logger, logEvent)
+#define LOG_TRACE(logEvent)  LOG4CPLUS_TRACE(g_logger, logEvent)
 
-void setlogmask(int logupto);
-void syslog(int level, const char * format, ...);
-void openlog(const char * log_ident,int flag, int facility);
-void closelog();
+#define TRACE_STUB log4cplus::TraceLogger __trace_log(g_logger, LOG4CPLUS_TEXT(""),__FILE__,__LINE__,__FUNCSIG__);
+
+#define TRACE_LOG(logEvent) \
+	LOG4CPLUS_MACRO_INSTANTIATE_OSTRINGSTREAM (___log4cplus_buf); \
+	___log4cplus_buf << logEvent;                                 \
+	log4cplus::TraceLogger ___trace_log(g_logger,___log4cplus_buf.str() ,__FILE__,__LINE__,__FUNCTION__)
+
+
 std::string wstring2string(const std::wstring& ws);
 std::wstring string2wstring(const std::string& as);
 
