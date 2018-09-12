@@ -496,12 +496,15 @@ int azs_getattr(const char *path, struct FUSE_STAT * stbuf)
 	CommonFile * t = parse_path(path);
 	if (t == nullptr) {
 		errno = ENOENT;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -ENOENT;
 	}
 	else {
 		int r = t->azs_getattr(stbuf, default_permission);
-		if (r)errno = r;
-		
+		if (r) {
+			errno = r;
+			LOG_INFO(L"errno=" << errno << L", path="<<path );
+		}
 		return -r;
 	}
 }
@@ -513,6 +516,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, FUSE_OFF_T,
 	Directory* t = parse_path(path)->to_dir();
 	if (t == nullptr) {
 		errno = ENOENT;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	else {
@@ -528,10 +532,12 @@ static int azs_open(const char *path, struct fuse_file_info *fi)
 	CommonFile * file = parse_path(path);
 	if (file == nullptr) {
 		errno = ENOENT;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	if (file->get_type()==FileType::F_Directory) {
 		errno = EISDIR;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	fhwraper* fh = new fhwraper(file);
@@ -549,6 +555,7 @@ static int azs_read(const char * path, char * buf, size_t size, FUSE_OFF_T offse
 	auto f = file->to_reg();
 	if (fh->flag & 0x1 || !f) {
 		errno = EBADF;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	int readcnt= f->read(offset, size, (uint8_t*)buf);
@@ -562,6 +569,7 @@ static int azs_write(const char *path, const char *buf, size_t size, FUSE_OFF_T 
 	auto f = file->to_reg();
 	if (!(fh->flag & 0x3)||!f) {
 		errno = EBADF;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	int writecnt = f->write(offset, size, (uint8_t*)buf);
@@ -575,10 +583,12 @@ int azs_truncate(const char * path, FUSE_OFF_T offset) {
 	CommonFile * file = parse_path(path);
 	if (file == nullptr) {
 		errno = ENOENT;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	if (file->get_type() == FileType::F_Directory) {
 		errno = EISDIR;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	RegularFile * reg = file->to_reg();
@@ -593,6 +603,7 @@ int azs_ftruncate(const char * path, FUSE_OFF_T offset, struct fuse_file_info *f
 	auto f = file->to_reg();
 	if (!(fh->flag & 0x3) || !f) {
 		errno = EBADF;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	f->trancate(offset);
@@ -606,11 +617,13 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	split_path(path, parentname, shortname);
 	if (shortname.empty()) {
 		errno = EACCES;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	Directory* parent = parse_path(parentname)->to_dir();
 	if (parent == nullptr) {
 		errno = EACCES;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	guid_t uid= parent->create_reg(shortname);
@@ -643,6 +656,7 @@ int azs_mkdir(const char *path, mode_t) {
 	split_path(path, parentname, shortname);
 	if (shortname.empty()) {
 		errno = EACCES;
+		LOG_INFO(L"errno=" << errno << L", path="<<path );
 		return -1;
 	}
 	Directory* parent = parse_path(parentname)->to_dir();
@@ -730,6 +744,7 @@ int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
 
 void azs_destroy(void * /*private_data*/)
 {
+	TRACE_LOG("");
 	Uploader::stop();
 }
 

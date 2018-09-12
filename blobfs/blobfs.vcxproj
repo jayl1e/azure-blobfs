@@ -27,10 +27,6 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="myutils.cpp" />
     <ClCompile Include="Uploader.cpp" />
-    <ClCompile Include="UploaderTest.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BasicFile.h" />
@@ -48,8 +44,9 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{D0F83A78-D005-43A9-8C6A-1A076687BD80}</ProjectGuid>
-    <RootNamespace>myfuse</RootNamespace>
+    <RootNamespace>blobfs</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
+    <ProjectName>blobfs</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -97,12 +94,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\Program Files\Dokan\Dokan Library-1.2.0\include\fuse;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files\Dokan\Dokan Library-1.2.0\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\t-jieli\WorkSpace\github\dokany\dokan_fuse\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\t-jieli\WorkSpace\github\dokany\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\Program Files\Dokan\Dokan Library-1.2.0\include\fuse;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files\Dokan\Dokan Library-1.2.0\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\t-jieli\WorkSpace\github\dokany\dokan_fuse\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\t-jieli\WorkSpace\github\dokany\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

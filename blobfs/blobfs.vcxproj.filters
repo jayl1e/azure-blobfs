@@ -27,9 +27,6 @@
     <ClCompile Include="Uploader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="UploaderTest.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Cache.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

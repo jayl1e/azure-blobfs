@@ -10,7 +10,10 @@
 #include <cwctype>
 #include <algorithm>
 
+#if defined (LOG4CPLUS_MACRO_FUNCTION)
+#undef LOG4CPLUS_MACRO_FUNCTION
 #define LOG4CPLUS_MACRO_FUNCTION() __FUNCTION__
+#endif
 
 extern log4cplus::Logger g_logger;
 #define LOG_FATAL(logEvent)  LOG4CPLUS_FATAL(g_logger, logEvent)
