@@ -63,20 +63,9 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
 	{
 		return ret;
 	}
-
-	//ret = validate_storage_connection();
-	//if (ret != 0)
-	//{
-	//	return ret;
-	//}
-
 	configure_fuse(&args);
-
 	set_up_callbacks();
-
 	auto& cache = BlockCache::instance()->cache;
-
 	ret = fuse_main(args.argc, args.argv, &azs_fuse_operations, NULL);
-
 	return 0;
 }

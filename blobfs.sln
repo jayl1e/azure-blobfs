@@ -4,6 +4,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 15.0.27703.2035
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "blobfs", "blobfs\blobfs.vcxproj", "{D0F83A78-D005-43A9-8C6A-1A076687BD80}"
+	ProjectSection(ProjectDependencies) = postProject
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924} = {4AF8149D-C526-4D38-A4BC-9FFA67EDF924}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dokan_fuse", "..\..\github\dokany\dokan_fuse\dokan_fuse.vcxproj", "{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,6 +34,22 @@ Global
 		{D0F83A78-D005-43A9-8C6A-1A076687BD80}.Release|x64.Build.0 = Release|x64
 		{D0F83A78-D005-43A9-8C6A-1A076687BD80}.Release|x86.ActiveCfg = Release|Win32
 		{D0F83A78-D005-43A9-8C6A-1A076687BD80}.Release|x86.Build.0 = Release|Win32
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|ARM.ActiveCfg = Debug|ARM
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|ARM.Build.0 = Debug|ARM
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|ARM64.Build.0 = Debug|ARM64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|x64.ActiveCfg = Debug|x64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|x64.Build.0 = Debug|x64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|x86.ActiveCfg = Debug|Win32
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Debug|x86.Build.0 = Debug|Win32
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|ARM.ActiveCfg = Release|ARM
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|ARM.Build.0 = Release|ARM
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|ARM64.ActiveCfg = Release|ARM64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|ARM64.Build.0 = Release|ARM64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|x64.ActiveCfg = Release|x64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|x64.Build.0 = Release|x64
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|x86.ActiveCfg = Release|Win32
+		{4AF8149D-C526-4D38-A4BC-9FFA67EDF924}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
