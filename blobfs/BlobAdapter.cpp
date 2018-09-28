@@ -423,6 +423,7 @@ void *azs_init(struct fuse_conn_info * conn)
 	azure_blob_container = std::make_shared<azure::storage::cloud_blob_container>(blob_client.get_container_reference(string2wstring(str_options.containerName)));
 	
 	Uploader::run();
+
 	
 	azure_blob_container->download_attributes();
 	auto& containermeta = azure_blob_container->metadata();
@@ -444,6 +445,8 @@ void *azs_init(struct fuse_conn_info * conn)
 	else {
 		rootdir = utility::string_to_uuid(iter->second);
 	}
+
+	
 
 	/*
 	cfg->attr_timeout = 360;

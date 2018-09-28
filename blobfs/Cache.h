@@ -18,7 +18,7 @@ namespace l_blob_adapter {
 		// mutex for read count and write count
 		// read write only take share lock
 		// clear and upload take unique lock
-		shared_timed_mutex read_mut, write_mut;
+		shared_timed_mutex access_mut, write_mut;
 
 		bool compare_and_set(ItemStatus oldval, ItemStatus newval);
 		virtual int gc_notify(pos_t pos)=0;

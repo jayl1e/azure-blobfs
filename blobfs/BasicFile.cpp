@@ -354,7 +354,6 @@ l_blob_adapter::Snapshot::Snapshot(BasicFile & file, std::unique_lock<std::mutex
 			Block& block =*(BlockCache::get(file.blocklist.at(index)));
 			
 			if (block.compare_and_set(ItemStatus::Dirty,ItemStatus::Uploading)) {
-
 				// std::unique_lock lock(block.write_mut);
 				this->dirtyblock[index] = file.blocklist.at(index);
 				this->blocklist.emplace_back(blockid, azure::storage::block_list_item::uncommitted );

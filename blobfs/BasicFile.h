@@ -59,9 +59,11 @@ namespace l_blob_adapter {
 		Block* get_write_block(const size_t blockindex); //lock file
 		Block* get_write_block_copy(const size_t blockindex); //lock file
 
+		
 
 		//file block chain
 		vector<pos_t> blocklist;
+		std::mutex block_mutex;
 
 		//property
 		size_t blocksize;
