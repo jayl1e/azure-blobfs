@@ -1,3 +1,3 @@
 # blobfs 
 
-Blobfs is a file system back-end with azure blob storage.
+Blobfs is a file system back-end with azure blob storage for Windows.
